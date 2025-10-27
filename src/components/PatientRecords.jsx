@@ -3,14 +3,28 @@ import React, { useState } from 'react';
 import { Calculator, Home, Download, Search, Trash2 } from 'lucide-react';
 import MedicineTable from './MedicineTable';
 import { calculateRecordTotals, exportToCSV } from '../utils/calculations';
+import { doc, deleteDoc } from "firebase/firestore";
+import { db } from "../utils/firebase"; // adjust path to your firebase.js config file
+
 
 export default function PatientRecords({ records, setRecords, inventory, setInventory, setCurrentPage }) {
   const [patientSearch, setPatientSearch] = useState('');
 
-  const deleteRecord = (id) => {
-    const record = records.find((r) => r.id === id);
-    if (!record) return;
+const deleteRecord = async (id) => {
+  const record = records.find((r) => r.id === id);
+  if (!record) {
+    alert("Record not found.");
+    return;
+  }
 
+  try {
+    // Log for debugging
+    console.log("Deleting record with ID:", id);
+
+    // 1️⃣ Delete from Firebase
+    await deleteDoc(doc(db, "patientRecords", id));
+
+    // 2️⃣ Restore medicines to inventory
     const updatedInventory = [...inventory];
     record.medicines?.forEach((medicine) => {
       const medIndex = updatedInventory.findIndex((m) => m.id === medicine.medicineId);
@@ -19,9 +33,17 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
       }
     });
 
+    // 3️⃣ Update state locally
     setInventory(updatedInventory);
     setRecords(records.filter((r) => r.id !== id));
-  };
+
+    alert("Record deleted successfully!");
+  } catch (error) {
+    console.error("Error deleting record:", error.code, error.message);
+    alert(`Failed to delete record: ${error.message}`);
+  }
+};
+
 
   const filteredRecords = records
     .filter((record) => record.patientName?.toLowerCase().includes(patientSearch.toLowerCase()))

@@ -14,7 +14,7 @@ const SummaryCard = ({ title, value, icon, bgColor }) => (
   </div>
 );
 
-export default function Inventory({ inventory, setInventory, setPage, clearAllData }) {
+export default function Inventory({ inventory, setInventory, setCurrentPage, clearAllData }) {
   const [showAddMedicine, setShowAddMedicine] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState(null);
   const [inventorySearch, setInventorySearch] = useState('');
@@ -182,7 +182,7 @@ export default function Inventory({ inventory, setInventory, setPage, clearAllDa
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
             <button
-              onClick={() => setPage('home')}
+              onClick={() => setCurrentPage('home')}
               className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2"
             >
               <Home size={18} /> Home
