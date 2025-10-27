@@ -1,0 +1,36 @@
+// C:/Users/haide/Desktop/Naeem Medicare/src/utils/constants.js
+export const INITIAL_MEDICINES = [
+  {
+    id: 1,
+    name: 'Panadol',
+    strength: '500mg',
+    type: 'Tablet',
+    packPurchaseRate: 45.0,
+    packRetailRate: 60.0,
+    unitsPerPack: 10,
+    totalPacks: 3,
+    totalUnits: 30,
+  },
+  {
+    id: 2,
+    name: 'Augmentin',
+    strength: '625mg',
+    type: 'Tablet',
+    packPurchaseRate: 380.0,
+    packRetailRate: 450.0,
+    unitsPerPack: 6,
+    totalPacks: 5,
+    totalUnits: 30,
+  },
+  {
+    id: 3,
+    name: 'Brufen',
+    strength: '400mg',
+    type: 'Tablet',
+    packPurchaseRate: 85.0,
+    packRetailRate: 110.0,
+    unitsPerPack: 15,
+    totalPacks: 2,
+    totalUnits: 30,
+  },
+];
