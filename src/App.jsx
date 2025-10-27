@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Download, Calculator, Package, Edit2, X, Search, Home } from 'lucide-react';
 
-// Initial test medicines
 const INITIAL_MEDICINES = [
   {
     id: 1,
@@ -39,19 +38,15 @@ const INITIAL_MEDICINES = [
 ];
 
 export default function MedicalRecordsApp() {
-  const [currentPage, setCurrentPage] = useState('home'); // 'home' or 'inventory'
-  const [inventory, setInventory] = useState(() => {
-    const saved = localStorage.getItem('medicalInventory');
-    return saved ? JSON.parse(saved) : INITIAL_MEDICINES;
-  });
-  const [records, setRecords] = useState(() => {
-    const saved = localStorage.getItem('medicalRecords');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [currentPage, setCurrentPage] = useState('home');
+  const [inventory, setInventory] = useState(INITIAL_MEDICINES);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showAddMedicine, setShowAddMedicine] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState(null);
   const [inventorySearch, setInventorySearch] = useState('');
-  
+  const [patientSearch, setPatientSearch] = useState('');
+  const [dailySearch, setDailySearch] = useState('');
   const [newMedicine, setNewMedicine] = useState({
     name: '',
     strength: '',
@@ -61,14 +56,22 @@ export default function MedicalRecordsApp() {
     unitsPerPack: 1,
     totalPacks: 1
   });
-
+  
+  const getCurrentDate = () => {
+    return new Date().toLocaleDateString('en-CA', { 
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  };
+  
   const [currentRecord, setCurrentRecord] = useState({
     patientName: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getCurrentDate(),
     medicines: [],
     doctorFees: 0
   });
-  
   const [searchTerm, setSearchTerm] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [currentMedicine, setCurrentMedicine] = useState({
@@ -82,31 +85,128 @@ export default function MedicalRecordsApp() {
     discount: 0
   });
 
-  // Save to localStorage whenever inventory or records change
-  React.useEffect(() => {
-    localStorage.setItem('medicalInventory', JSON.stringify(inventory));
-  }, [inventory]);
+  // Calculations - defined early to avoid initialization errors
+  const calculateMedicineTotal = (medicine) => {
+    return medicine.quantity * medicine.finalPrice;
+  };
 
-  React.useEffect(() => {
-    localStorage.setItem('medicalRecords', JSON.stringify(records));
-  }, [records]);
+  const calculateMedicineCost = (medicine) => {
+    return medicine.quantity * medicine.purchasePerUnit;
+  };
 
-  // Add or update medicine in inventory
+  const calculateRecordTotals = (record) => {
+    const medicineSale = record.medicines.reduce((sum, m) => sum + calculateMedicineTotal(m), 0);
+    const medicineCost = record.medicines.reduce((sum, m) => sum + calculateMedicineCost(m), 0);
+    const totalSale = medicineSale + parseFloat(record.doctorFees || 0);
+    const profit = totalSale - medicineCost;
+    return { medicineSale, medicineCost, totalSale, profit };
+  };
+
+  const calculateOverallTotals = () => {
+    let totalSales = 0;
+    let totalCosts = 0;
+    let totalDoctorFees = 0;
+    records.forEach(record => {
+      const totals = calculateRecordTotals(record);
+      totalSales += totals.totalSale;
+      totalCosts += totals.medicineCost;
+      totalDoctorFees += parseFloat(record.doctorFees || 0);
+    });
+    return {
+      totalSales,
+      totalCosts,
+      totalDoctorFees,
+      totalProfit: totalSales - totalCosts
+    };
+  };
+
+  // Load data from persistent storage on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [inventoryResult, recordsResult] = await Promise.all([
+          window.storage.get('medicalInventory').catch(() => null),
+          window.storage.get('medicalRecords').catch(() => null)
+        ]);
+        
+        if (inventoryResult?.value) {
+          setInventory(JSON.parse(inventoryResult.value));
+        }
+        if (recordsResult?.value) {
+          setRecords(JSON.parse(recordsResult.value));
+        }
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
+
+  // Save inventory to persistent storage
+  useEffect(() => {
+    if (!loading) {
+      const saveInventory = async () => {
+        try {
+          await window.storage.set('medicalInventory', JSON.stringify(inventory));
+        } catch (error) {
+          console.error('Error saving inventory:', error);
+        }
+      };
+      saveInventory();
+    }
+  }, [inventory, loading]);
+
+  // Save records to persistent storage
+  useEffect(() => {
+    if (!loading) {
+      const saveRecords = async () => {
+        try {
+          await window.storage.set('medicalRecords', JSON.stringify(records));
+        } catch (error) {
+          console.error('Error saving records:', error);
+        }
+      };
+      saveRecords();
+    }
+  }, [records, loading]);
+
+  // Clear home screen
+  const clearHomeScreen = () => {
+    setCurrentRecord({
+      patientName: '',
+      date: getCurrentDate(),
+      medicines: [],
+      doctorFees: 0
+    });
+    setCurrentMedicine({
+      medicineId: null,
+      name: '',
+      fullName: '',
+      quantity: 1,
+      purchasePerUnit: 0,
+      retailPerUnit: 0,
+      pricePerUnit: 0,
+      discount: 0
+    });
+    setSearchTerm('');
+  };
+
+  // Inventory management functions
   const saveMedicineToInventory = () => {
     if (!newMedicine.name || !newMedicine.strength) {
       alert('Please fill in medicine name and strength');
       return;
     }
-
     const totalUnits = newMedicine.totalPacks * newMedicine.unitsPerPack;
-
     if (editingMedicine) {
-      // When editing, preserve the current stock and adjust based on new pack size
       const currentMed = inventory.find(m => m.id === editingMedicine.id);
       const updatedMed = {
         ...newMedicine,
         id: editingMedicine.id,
-        totalUnits: currentMed.totalUnits // Keep current stock when editing
+        totalUnits: currentMed.totalUnits
       };
       setInventory(inventory.map(med => 
         med.id === editingMedicine.id ? updatedMed : med
@@ -120,7 +220,6 @@ export default function MedicalRecordsApp() {
       };
       setInventory([...inventory, newMed]);
     }
-
     setNewMedicine({
       name: '',
       strength: '',
@@ -133,7 +232,6 @@ export default function MedicalRecordsApp() {
     setShowAddMedicine(false);
   };
 
-  // Update inventory stock
   const updateInventoryStock = (medicineId, packsToAdd) => {
     setInventory(inventory.map(med => {
       if (med.id === medicineId) {
@@ -156,7 +254,7 @@ export default function MedicalRecordsApp() {
       packPurchaseRate: medicine.packPurchaseRate,
       packRetailRate: medicine.packRetailRate,
       unitsPerPack: medicine.unitsPerPack,
-      totalPacks: Math.floor(medicine.totalUnits / medicine.unitsPerPack) // Calculate packs from current stock
+      totalPacks: Math.floor(medicine.totalUnits / medicine.unitsPerPack)
     });
     setEditingMedicine(medicine);
     setShowAddMedicine(true);
@@ -169,6 +267,7 @@ export default function MedicalRecordsApp() {
     }
   };
 
+  // Search and filtering
   const filteredMedicines = inventory.filter(med => {
     const fullName = `${med.name} ${med.strength}`;
     return fullName.toLowerCase().includes(searchTerm.toLowerCase());
@@ -179,11 +278,55 @@ export default function MedicalRecordsApp() {
     return fullName.toLowerCase().includes(inventorySearch.toLowerCase());
   });
 
+  const filteredRecords = records
+    .filter(record => record.patientName.toLowerCase().includes(patientSearch.toLowerCase()))
+    .reduce((acc, record) => {
+      const existing = acc.find(r => r.patientName.toLowerCase() === record.patientName.toLowerCase());
+      if (existing) {
+        existing.records.push(record);
+      } else {
+        acc.push({
+          patientName: record.patientName,
+          records: [record]
+        });
+      }
+      return acc;
+    }, []);
+
+  const dailyRecords = records.reduce((acc, record) => {
+    const date = record.date;
+    if (!acc[date]) {
+      acc[date] = {
+        date,
+        records: [],
+        totals: {
+          medicineSale: 0,
+          medicineCost: 0,
+          doctorFees: 0,
+          totalSale: 0,
+          profit: 0
+        }
+      };
+    }
+    acc[date].records.push(record);
+    const recordTotals = calculateRecordTotals(record);
+    acc[date].totals.medicineSale += recordTotals.medicineSale;
+    acc[date].totals.medicineCost += recordTotals.medicineCost;
+    acc[date].totals.doctorFees += parseFloat(record.doctorFees || 0);
+    acc[date].totals.totalSale += recordTotals.totalSale;
+    acc[date].totals.profit += recordTotals.profit;
+    return acc;
+  }, {});
+
+  const filteredDailyRecords = Object.values(dailyRecords).filter(record =>
+    record.date.includes(dailySearch)
+  );
+
+  // Medicine selection and pricing
   const selectMedicine = (medicine) => {
     const pricePerUnit = medicine.packRetailRate / medicine.unitsPerPack;
     const purchasePerUnit = medicine.packPurchaseRate / medicine.unitsPerPack;
     const fullName = `${medicine.name} ${medicine.strength} (${medicine.type})`;
-    
     setCurrentMedicine({
       medicineId: medicine.id,
       name: medicine.name,
@@ -206,12 +349,10 @@ export default function MedicalRecordsApp() {
   const addMedicine = () => {
     if (currentMedicine.medicineId && currentMedicine.quantity > 0) {
       const medicine = inventory.find(m => m.id === currentMedicine.medicineId);
-      
       if (medicine.totalUnits < currentMedicine.quantity) {
         alert(`Not enough stock! Available: ${medicine.totalUnits} units`);
         return;
       }
-
       const updatedInventory = inventory.map(med => {
         if (med.id === currentMedicine.medicineId) {
           return {
@@ -222,7 +363,6 @@ export default function MedicalRecordsApp() {
         return med;
       });
       setInventory(updatedInventory);
-
       const finalPrice = calculateFinalPrice();
       setCurrentRecord({
         ...currentRecord,
@@ -232,7 +372,6 @@ export default function MedicalRecordsApp() {
           finalPrice: finalPrice
         }]
       });
-
       setCurrentMedicine({
         medicineId: null,
         name: '',
@@ -249,7 +388,6 @@ export default function MedicalRecordsApp() {
 
   const removeMedicine = (id) => {
     const medicine = currentRecord.medicines.find(m => m.id === id);
-    
     const updatedInventory = inventory.map(med => {
       if (med.id === medicine.medicineId) {
         return {
@@ -260,44 +398,21 @@ export default function MedicalRecordsApp() {
       return med;
     });
     setInventory(updatedInventory);
-
     setCurrentRecord({
       ...currentRecord,
       medicines: currentRecord.medicines.filter(m => m.id !== id)
     });
   };
 
-  const calculateMedicineTotal = (medicine) => {
-    return medicine.quantity * medicine.finalPrice;
-  };
-
-  const calculateMedicineCost = (medicine) => {
-    return medicine.quantity * medicine.purchasePerUnit;
-  };
-
-  const calculateRecordTotals = (record) => {
-    const medicineSale = record.medicines.reduce((sum, m) => sum + calculateMedicineTotal(m), 0);
-    const medicineCost = record.medicines.reduce((sum, m) => sum + calculateMedicineCost(m), 0);
-    const totalSale = medicineSale + parseFloat(record.doctorFees || 0);
-    const profit = totalSale - medicineCost;
-    return { medicineSale, medicineCost, totalSale, profit };
-  };
-
   const saveRecord = () => {
     if (currentRecord.patientName && (currentRecord.medicines.length > 0 || currentRecord.doctorFees > 0)) {
       setRecords([...records, { ...currentRecord, id: Date.now() }]);
-      setCurrentRecord({
-        patientName: '',
-        date: new Date().toISOString().split('T')[0],
-        medicines: [],
-        doctorFees: 0
-      });
+      clearHomeScreen();
     }
   };
 
   const deleteRecord = (id) => {
     const record = records.find(r => r.id === id);
-    
     const updatedInventory = [...inventory];
     record.medicines.forEach(medicine => {
       const medIndex = updatedInventory.findIndex(m => m.id === medicine.medicineId);
@@ -306,41 +421,19 @@ export default function MedicalRecordsApp() {
       }
     });
     setInventory(updatedInventory);
-    
     setRecords(records.filter(r => r.id !== id));
   };
 
-  const calculateOverallTotals = () => {
-    let totalSales = 0;
-    let totalCosts = 0;
-    let totalDoctorFees = 0;
-
-    records.forEach(record => {
-      const totals = calculateRecordTotals(record);
-      totalSales += totals.totalSale;
-      totalCosts += totals.medicineCost;
-      totalDoctorFees += parseFloat(record.doctorFees || 0);
-    });
-
-    return {
-      totalSales,
-      totalCosts,
-      totalDoctorFees,
-      totalProfit: totalSales - totalCosts
-    };
-  };
-
+  // Export functions
   const exportToCSV = () => {
     if (records.length === 0) {
       alert('No records to export!');
       return;
     }
-
     let csv = '****** NAEEM MEDICARE ******\n';
     csv += 'Medical Practice Management System\n';
-    csv += `Report Generated: ${new Date().toLocaleString()}\n\n`;
+    csv += `Report Generated: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' })}\n\n`;
     csv += 'Date,Patient Name,Medicine,Quantity,Purchase Rate/Unit,Retail Rate/Unit,Discount %,Final Price/Unit,Medicine Total,Doctor Fees,Total Sale,Profit\n';
-    
     records.forEach(record => {
       const totals = calculateRecordTotals(record);
       if (record.medicines.length > 0) {
@@ -352,8 +445,6 @@ export default function MedicalRecordsApp() {
         csv += `${record.date},${record.patientName},,,,,,,,${record.doctorFees},${totals.totalSale.toFixed(2)},${totals.profit.toFixed(2)}\n`;
       }
     });
-
-    // Add summary row
     const overall = calculateOverallTotals();
     csv += `\n,,,,,,,,SUMMARY,,\n`;
     csv += `,,,,,,,,Total Sales,,Rs. ${overall.totalSales.toFixed(2)}\n`;
@@ -361,18 +452,16 @@ export default function MedicalRecordsApp() {
     csv += `,,,,,,,,Total Doctor Fees,,Rs. ${overall.totalDoctorFees.toFixed(2)}\n`;
     csv += `,,,,,,,,Total Profit,,Rs. ${overall.totalProfit.toFixed(2)}\n`;
     csv += `\n****** Thank you for using Naeem Medicare ******\n`;
-
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const timestamp = new Date().toISOString().split('T')[0];
+    const timestamp = getCurrentDate();
     a.download = `Naeem_Medicare_Records_${timestamp}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-    
     alert('Patient records exported successfully!');
   };
 
@@ -381,80 +470,94 @@ export default function MedicalRecordsApp() {
       alert('No inventory to export!');
       return;
     }
-
     let csv = '****** NAEEM MEDICARE ******\n';
     csv += 'Medicine Inventory Report\n';
-    csv += `Report Generated: ${new Date().toLocaleString()}\n\n`;
-    csv += 'Medicine Name,Strength,Type,Pack Purchase Rate,Pack Retail Rate,Units Per Pack,Total Packs,Total Units Available,Purchase/Unit,Retail/Unit\n';
-    
+    csv += `Report Generated: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' })}\n\n`;
+    csv += 'Medicine Name,Strength,Type,Pack Purchase Rate,Pack Retail Rate,Units Per Pack,Total Packs,Total Units Available,Stock Status,Purchase/Unit,Retail/Unit\n';
     inventory.forEach(med => {
       const purchasePerUnit = med.packPurchaseRate / med.unitsPerPack;
       const retailPerUnit = med.packRetailRate / med.unitsPerPack;
       const totalPacks = Math.floor(med.totalUnits / med.unitsPerPack);
-      csv += `"${med.name}",${med.strength},${med.type},${med.packPurchaseRate.toFixed(2)},${med.packRetailRate.toFixed(2)},${med.unitsPerPack},${totalPacks},${med.totalUnits},${purchasePerUnit.toFixed(2)},${retailPerUnit.toFixed(2)}\n`;
+      const stockStatus = med.totalUnits === 0 ? 'Out of Stock' : 'In Stock';
+      csv += `"${med.name}",${med.strength},${med.type},${med.packPurchaseRate.toFixed(2)},${med.packRetailRate.toFixed(2)},${med.unitsPerPack},${totalPacks},${med.totalUnits},${stockStatus},${purchasePerUnit.toFixed(2)},${retailPerUnit.toFixed(2)}\n`;
     });
-
     csv += `\n****** Thank you for using Naeem Medicare ******\n`;
-
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const timestamp = new Date().toISOString().split('T')[0];
+    const timestamp = getCurrentDate();
     a.download = `Naeem_Medicare_Inventory_${timestamp}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-    
     alert('Inventory exported successfully!');
+  };
+
+  const clearAllData = async () => {
+    if (confirm('Are you sure you want to clear all data? This will delete all inventory and patient records.')) {
+      try {
+        await Promise.all([
+          window.storage.delete('medicalInventory'),
+          window.storage.delete('medicalRecords')
+        ]);
+        setInventory(INITIAL_MEDICINES);
+        setRecords([]);
+        alert('All data cleared successfully!');
+        setCurrentPage('home');
+      } catch (error) {
+        console.error('Error clearing data:', error);
+        alert('Error clearing data. Please try again.');
+      }
+    }
   };
 
   const overallTotals = calculateOverallTotals();
 
-  // Inventory Page
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading Naeem Medicare...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Inventory Tab
   if (currentPage === 'inventory') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 p-6">
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 p-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
+          <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
+              <div className="flex items-center gap-3 mb-4 sm:mb-0">
                 <Package className="text-purple-600" size={28} />
-                <h1 className="text-3xl font-bold text-purple-900">Medicine Inventory Management</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-purple-900">Medicine Inventory Management</h1>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                 <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to clear all data? This will delete all inventory and patient records.')) {
-                      localStorage.removeItem('medicalInventory');
-                      localStorage.removeItem('medicalRecords');
-                      setInventory(INITIAL_MEDICINES);
-                      setRecords([]);
-                      alert('All data cleared successfully!');
-                      setCurrentPage('home');
-                    }
-                  }}
-                  className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 flex items-center gap-2"
+                  onClick={clearAllData}
+                  className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 flex items-center gap-2 w-full sm:w-auto"
                 >
                   <Trash2 size={18} /> Clear All Data
                 </button>
                 <button
                   onClick={() => setCurrentPage('home')}
-                  className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2"
+                  className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 w-full sm:w-auto"
                 >
                   <Home size={18} /> Home
                 </button>
                 <button
                   onClick={exportInventoryToCSV}
-                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2"
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 w-full sm:w-auto"
                 >
                   <Download size={18} /> Export Inventory
                 </button>
               </div>
             </div>
-
-            {/* Search Bar */}
             <div className="mb-6">
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-gray-400" size={20} />
@@ -467,8 +570,6 @@ export default function MedicalRecordsApp() {
                 />
               </div>
             </div>
-
-            {/* Add Medicine Button */}
             <button
               onClick={() => {
                 setShowAddMedicine(!showAddMedicine);
@@ -483,19 +584,17 @@ export default function MedicalRecordsApp() {
                   totalPacks: 1
                 });
               }}
-              className="mb-6 bg-purple-600 text-white px-6 py-3 rounded-md hover:bg-purple-700 flex items-center gap-2 font-semibold"
+              className="mb-6 bg-purple-600 text-white px-6 py-3 rounded-md hover:bg-purple-700 flex items-center gap-2 font-semibold w-full sm:w-auto"
             >
               {showAddMedicine ? <X size={20} /> : <Plus size={20} />}
               {showAddMedicine ? 'Cancel' : 'Add New Medicine'}
             </button>
-
-            {/* Add/Edit Medicine Form */}
             {showAddMedicine && (
-              <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-6 mb-6">
+              <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 sm:p-6 mb-6">
                 <h3 className="font-semibold text-purple-900 text-lg mb-4">
                   {editingMedicine ? 'Edit Medicine' : 'Add New Medicine'}
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Medicine Name *</label>
                     <input
@@ -590,46 +689,44 @@ export default function MedicalRecordsApp() {
                 </div>
               </div>
             )}
-
-            {/* Inventory Table */}
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="bg-purple-600 text-white">
-                    <th className="px-4 py-3 text-left">Medicine</th>
-                    <th className="px-4 py-3 text-left">Strength</th>
-                    <th className="px-4 py-3 text-left">Type</th>
-                    <th className="px-4 py-3 text-right">Pack Purchase</th>
-                    <th className="px-4 py-3 text-right">Pack Retail</th>
-                    <th className="px-4 py-3 text-right">Units/Pack</th>
-                    <th className="px-4 py-3 text-right">Total Packs</th>
-                    <th className="px-4 py-3 text-right">Stock (Units)</th>
-                    <th className="px-4 py-3 text-right">Purchase/Unit</th>
-                    <th className="px-4 py-3 text-right">Retail/Unit</th>
-                    <th className="px-4 py-3 text-center">Update Stock</th>
-                    <th className="px-4 py-3 text-center">Actions</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left">Medicine</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left">Strength</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left">Type</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-right">Pack Purchase</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-right">Pack Retail</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-right">Units/Pack</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-right">Total Packs</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-right">Stock (Units)</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-right">Purchase/Unit</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-right">Retail/Unit</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-center">Update Stock</th>
+                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredInventory.map((med, index) => (
-                    <tr key={med.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-purple-50'} ${med.totalUnits < 10 ? 'bg-red-100' : ''} border-b hover:bg-purple-100`}>
-                      <td className="px-4 py-3 font-semibold">{med.name}</td>
-                      <td className="px-4 py-3">{med.strength}</td>
-                      <td className="px-4 py-3">
+                    <tr key={med.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-purple-50'} ${med.totalUnits === 0 ? 'bg-red-100' : med.totalUnits < 10 ? 'bg-yellow-100' : ''} border-b hover:bg-purple-100`}>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 font-semibold">{med.name} {med.totalUnits === 0 && <span className="ml-2 text-red-600 text-xs font-bold">[Out of Stock]</span>}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3">{med.strength}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3">
                         <span className="bg-gray-200 px-2 py-1 rounded text-xs">{med.type}</span>
                       </td>
-                      <td className="px-4 py-3 text-right">Rs. {med.packPurchaseRate.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right">Rs. {med.packRetailRate.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right">{med.unitsPerPack}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{Math.floor(med.totalUnits / med.unitsPerPack)}</td>
-                      <td className="px-4 py-3 text-right font-bold">
-                        <span className={med.totalUnits < 10 ? 'text-red-600' : 'text-green-600'}>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">Rs. {med.packPurchaseRate.toFixed(2)}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">Rs. {med.packRetailRate.toFixed(2)}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">{med.unitsPerPack}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold">{Math.floor(med.totalUnits / med.unitsPerPack)}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-right font-bold">
+                        <span className={med.totalUnits === 0 ? 'text-red-600' : med.totalUnits < 10 ? 'text-yellow-600' : 'text-green-600'}>
                           {med.totalUnits}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right text-blue-600">Rs. {(med.packPurchaseRate / med.unitsPerPack).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right text-green-600">Rs. {(med.packRetailRate / med.unitsPerPack).toFixed(2)}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-right text-blue-600">Rs. {(med.packPurchaseRate / med.unitsPerPack).toFixed(2)}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3 text-right text-green-600">Rs. {(med.packRetailRate / med.unitsPerPack).toFixed(2)}</td>
+                      <td className="px-2 sm:px-4 py-2 sm:py-3">
                         <div className="flex gap-1 items-center justify-center">
                           <input
                             type="number"
@@ -652,7 +749,7 @@ export default function MedicalRecordsApp() {
                           </button>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-2 sm:px-4 py-2 sm:py-3">
                         <div className="flex gap-2 justify-center">
                           <button
                             onClick={() => startEditMedicine(med)}
@@ -686,31 +783,275 @@ export default function MedicalRecordsApp() {
     );
   }
 
-  // Home Page (Patient Records)
+  // Patient Records Tab
+  if (currentPage === 'patientRecords') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
+              <div className="flex items-center gap-3 mb-4 sm:mb-0">
+                <Calculator className="text-blue-600" size={28} />
+                <h1 className="text-2xl sm:text-3xl font-bold text-blue-900">Patient Records</h1>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => setCurrentPage('home')}
+                  className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 w-full sm:w-auto"
+                >
+                  <Home size={18} /> Home
+                </button>
+                <button
+                  onClick={exportToCSV}
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 w-full sm:w-auto"
+                >
+                  <Download size={18} /> Export Records
+                </button>
+              </div>
+            </div>
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 text-gray-400" size={20} />
+                <input
+                  type="text"
+                  placeholder="Search patients by name..."
+                  value={patientSearch}
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="space-y-4">
+              {filteredRecords.length > 0 ? (
+                filteredRecords.map((patient, index) => (
+                  <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                    <h3 className="font-bold text-lg text-blue-800 mb-3">{patient.patientName}</h3>
+                    {patient.records.map(record => {
+                      const totals = calculateRecordTotals(record);
+                      return (
+                        <div key={record.id} className="border-t pt-3 mt-3">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="text-sm text-gray-600">Date: {record.date}</p>
+                            </div>
+                            <button
+                              onClick={() => deleteRecord(record.id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <Trash2 size={20} />
+                            </button>
+                          </div>
+                          {record.medicines.length > 0 && (
+                            <div className="overflow-x-auto mb-3">
+                              <table className="w-full text-sm">
+                                <thead className="bg-gray-200">
+                                  <tr>
+                                    <th className="px-2 py-1 text-left">Medicine</th>
+                                    <th className="px-2 py-1 text-right">Qty</th>
+                                    <th className="px-2 py-1 text-right">Purchase</th>
+                                    <th className="px-2 py-1 text-right">Retail</th>
+                                    <th className="px-2 py-1 text-right">Disc</th>
+                                    <th className="px-2 py-1 text-right">Final</th>
+                                    <th className="px-2 py-1 text-right">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {record.medicines.map(medicine => (
+                                    <tr key={medicine.id} className="border-b">
+                                      <td className="px-2 py-1">{medicine.fullName}</td>
+                                      <td className="px-2 py-1 text-right">{medicine.quantity}</td>
+                                      <td className="px-2 py-1 text-right text-blue-600">{medicine.purchasePerUnit.toFixed(2)}</td>
+                                      <td className="px-2 py-1 text-right text-green-600">{medicine.retailPerUnit.toFixed(2)}</td>
+                                      <td className="px-2 py-1 text-right">{medicine.discount}%</td>
+                                      <td className="px-2 py-1 text-right font-semibold">{medicine.finalPrice.toFixed(2)}</td>
+                                      <td className="px-2 py-1 text-right font-bold">Rs. {calculateMedicineTotal(medicine).toFixed(2)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-3 rounded">
+                            <div>
+                              <p className="text-xs text-gray-600">Medicine Sale</p>
+                              <p className="font-semibold text-green-700">Rs. {totals.medicineSale.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-600">Doctor Fees</p>
+                              <p className="font-semibold text-blue-700">Rs. {record.doctorFees.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-600">Total Sale</p>
+                              <p className="font-semibold text-indigo-700">Rs. {totals.totalSale.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-600">Profit</p>
+                              <p className="font-semibold text-emerald-700">Rs. {totals.profit.toFixed(2)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No patient records found
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Daily Records Tab
+  if (currentPage === 'dailyRecords') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 p-4 sm:p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
+              <div className="flex items-center gap-3 mb-4 sm:mb-0">
+                <Calculator className="text-green-600" size={28} />
+                <h1 className="text-2xl sm:text-3xl font-bold text-green-900">Daily Sales Records</h1>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => setCurrentPage('home')}
+                  className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 w-full sm:w-auto"
+                >
+                  <Home size={18} /> Home
+                </button>
+                <button
+                  onClick={exportToCSV}
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 w-full sm:w-auto"
+                >
+                  <Download size={18} /> Export Records
+                </button>
+              </div>
+            </div>
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 text-gray-400" size={20} />
+                <input
+                  type="text"
+                  placeholder="Search by date (YYYY-MM-DD)..."
+                  value={dailySearch}
+                  onChange={(e) => setDailySearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+            </div>
+            <div className="space-y-4">
+              {filteredDailyRecords.length > 0 ? (
+                filteredDailyRecords.map((daily, index) => (
+                  <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                    <h3 className="font-bold text-lg text-green-800 mb-3">Date: {daily.date}</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-3 rounded mb-3">
+                      <div>
+                        <p className="text-xs text-gray-600">Medicine Sale</p>
+                        <p className="font-semibold text-green-700">Rs. {daily.totals.medicineSale.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-600">Doctor Fees</p>
+                        <p className="font-semibold text-blue-700">Rs. {daily.totals.doctorFees.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-600">Total Sale</p>
+                        <p className="font-semibold text-indigo-700">Rs. {daily.totals.totalSale.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-600">Profit</p>
+                        <p className="font-semibold text-emerald-700">Rs. {daily.totals.profit.toFixed(2)}</p>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-200">
+                          <tr>
+                            <th className="px-2 py-1 text-left">Patient</th>
+                            <th className="px-2 py-1 text-right">Medicine Sale</th>
+                            <th className="px-2 py-1 text-right">Doctor Fees</th>
+                            <th className="px-2 py-1 text-right">Total Sale</th>
+                            <th className="px-2 py-1 text-right">Profit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {daily.records.map(record => {
+                            const totals = calculateRecordTotals(record);
+                            return (
+                              <tr key={record.id} className="border-b">
+                                <td className="px-2 py-1">{record.patientName}</td>
+                                <td className="px-2 py-1 text-right text-green-600">{totals.medicineSale.toFixed(2)}</td>
+                                <td className="px-2 py-1 text-right text-blue-600">{record.doctorFees.toFixed(2)}</td>
+                                <td className="px-2 py-1 text-right text-indigo-600">{totals.totalSale.toFixed(2)}</td>
+                                <td className="px-2 py-1 text-right text-emerald-600">{totals.profit.toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No daily records found
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Home Page
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+        <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
+            <div className="mb-4 sm:mb-0">
+              <h1 className="text-2xl sm:text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
                 ✨ Naeem Medicare ✨
               </h1>
-              <p className="text-lg text-gray-600 font-medium">Medical Practice Management System</p>
+              <p className="text-base sm:text-lg text-gray-600 font-medium">Medical Practice Management System</p>
             </div>
-            <button
-              onClick={() => setCurrentPage('inventory')}
-              className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 flex items-center gap-2"
-            >
-              <Package size={18} /> Manage Inventory
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <button
+                onClick={() => setCurrentPage('inventory')}
+                className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 flex items-center gap-2 w-full sm:w-auto"
+              >
+                <Package size={18} /> Manage Inventory
+              </button>
+              <button
+                onClick={() => setCurrentPage('patientRecords')}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto"
+              >
+                <Calculator size={18} /> Patient Records
+              </button>
+              <button
+                onClick={() => setCurrentPage('dailyRecords')}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 w-full sm:w-auto"
+              >
+                <Calculator size={18} /> Daily Records
+              </button>
+            </div>
           </div>
-          
-          {/* Current Record Entry */}
-          <div className="border-2 border-indigo-200 rounded-lg p-6 mb-6 bg-indigo-50">
-            <h2 className="text-xl font-semibold text-indigo-800 mb-4">New Patient Record</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="border-2 border-indigo-200 rounded-lg p-4 sm:p-6 mb-6 bg-indigo-50">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg sm:text-xl font-semibold text-indigo-800">New Patient Record</h2>
+              <button
+                onClick={clearHomeScreen}
+                className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2"
+              >
+                <X size={18} /> Clear Form
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name *</label>
                 <input
@@ -741,12 +1082,10 @@ export default function MedicalRecordsApp() {
                 />
               </div>
             </div>
-
-            {/* Medicine Entry */}
             <div className="bg-white rounded-lg p-4 mb-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Add Medicine</h3>
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-3">
-                <div className="relative col-span-2">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3">Add Medicine</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-3">
+                <div className="relative col-span-1 sm:col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">Search Medicine</label>
                   <input
                     type="text"
@@ -767,7 +1106,7 @@ export default function MedicalRecordsApp() {
                           onClick={() => selectMedicine(med)}
                           className="px-3 py-2 hover:bg-indigo-100 cursor-pointer border-b"
                         >
-                          <div className="font-medium">{med.name} {med.strength}</div>
+                          <div className="font-medium">{med.name} {med.strength} {med.totalUnits === 0 && <span className="text-red-600 text-xs font-bold">[Out of Stock]</span>}</div>
                           <div className="text-xs text-gray-600">
                             {med.type} | Stock: {med.totalUnits} units
                           </div>
@@ -824,34 +1163,32 @@ export default function MedicalRecordsApp() {
                   </button>
                 </div>
               </div>
-
-              {/* Medicine List */}
               {currentRecord.medicines.length > 0 && (
                 <div className="overflow-x-auto mt-4">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-100">
                       <tr>
-                        <th className="px-3 py-2 text-left">Medicine</th>
-                        <th className="px-3 py-2 text-right">Quantity</th>
-                        <th className="px-3 py-2 text-right">Purchase/Unit</th>
-                        <th className="px-3 py-2 text-right">Retail/Unit</th>
-                        <th className="px-3 py-2 text-right">Discount %</th>
-                        <th className="px-3 py-2 text-right">Final/Unit</th>
-                        <th className="px-3 py-2 text-right">Total</th>
-                        <th className="px-3 py-2"></th>
+                        <th className="px-2 sm:px-3 py-2 text-left">Medicine</th>
+                        <th className="px-2 sm:px-3 py-2 text-right">Quantity</th>
+                        <th className="px-2 sm:px-3 py-2 text-right">Purchase/Unit</th>
+                        <th className="px-2 sm:px-3 py-2 text-right">Retail/Unit</th>
+                        <th className="px-2 sm:px-3 py-2 text-right">Discount %</th>
+                        <th className="px-2 sm:px-3 py-2 text-right">Final/Unit</th>
+                        <th className="px-2 sm:px-3 py-2 text-right">Total</th>
+                        <th className="px-2 sm:px-3 py-2"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {currentRecord.medicines.map(medicine => (
                         <tr key={medicine.id} className="border-b">
-                          <td className="px-3 py-2">{medicine.fullName}</td>
-                          <td className="px-3 py-2 text-right">{medicine.quantity}</td>
-                          <td className="px-3 py-2 text-right text-blue-600">{medicine.purchasePerUnit.toFixed(2)}</td>
-                          <td className="px-3 py-2 text-right text-green-600">{medicine.retailPerUnit.toFixed(2)}</td>
-                          <td className="px-3 py-2 text-right">{medicine.discount}%</td>
-                          <td className="px-3 py-2 text-right font-semibold">{medicine.finalPrice.toFixed(2)}</td>
-                          <td className="px-3 py-2 text-right font-bold text-indigo-700">Rs. {calculateMedicineTotal(medicine).toFixed(2)}</td>
-                          <td className="px-3 py-2">
+                          <td className="px-2 sm:px-3 py-2">{medicine.fullName}</td>
+                          <td className="px-2 sm:px-3 py-2 text-right">{medicine.quantity}</td>
+                          <td className="px-2 sm:px-3 py-2 text-right text-blue-600">{medicine.purchasePerUnit.toFixed(2)}</td>
+                          <td className="px-2 sm:px-3 py-2 text-right text-green-600">{medicine.retailPerUnit.toFixed(2)}</td>
+                          <td className="px-2 sm:px-3 py-2 text-right">{medicine.discount}%</td>
+                          <td className="px-2 sm:px-3 py-2 text-right font-semibold">{medicine.finalPrice.toFixed(2)}</td>
+                          <td className="px-2 sm:px-3 py-2 text-right font-bold text-indigo-700">Rs. {calculateMedicineTotal(medicine).toFixed(2)}</td>
+                          <td className="px-2 sm:px-3 py-2">
                             <button onClick={() => removeMedicine(medicine.id)} className="text-red-600 hover:text-red-800">
                               <Trash2 size={16} />
                             </button>
@@ -863,123 +1200,42 @@ export default function MedicalRecordsApp() {
                 </div>
               )}
             </div>
-
             <button
               onClick={saveRecord}
               disabled={!currentRecord.patientName}
-              className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 font-semibold flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 font-semibold flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed w-full sm:w-auto"
             >
               <Calculator size={18} /> Save Record
             </button>
           </div>
-
-          {/* Overall Summary */}
           {records.length > 0 && (
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-6 mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-green-800">Overall Summary</h2>
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-4 sm:p-6 mb-6">
+              <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
+                <h2 className="text-lg sm:text-xl font-bold text-green-800 mb-4 sm:mb-0">Overall Summary</h2>
                 <button
                   onClick={exportToCSV}
-                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2"
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 w-full sm:w-auto"
                 >
                   <Download size={18} /> Export to CSV
                 </button>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-lg p-4 shadow">
-                  <p className="text-sm text-gray-600">Total Sales</p>
-                  <p className="text-2xl font-bold text-green-700">Rs. {overallTotals.totalSales.toFixed(2)}</p>
-                </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="bg-white rounded-lg p-4 shadow">
                   <p className="text-sm text-gray-600">Total Costs</p>
-                  <p className="text-2xl font-bold text-red-700">Rs. {overallTotals.totalCosts.toFixed(2)}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-red-700">Rs. {overallTotals.totalCosts.toFixed(2)}</p>
                 </div>
                 <div className="bg-white rounded-lg p-4 shadow">
                   <p className="text-sm text-gray-600">Doctor Fees</p>
-                  <p className="text-2xl font-bold text-blue-700">Rs. {overallTotals.totalDoctorFees.toFixed(2)}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-blue-700">Rs. {overallTotals.totalDoctorFees.toFixed(2)}</p>
+                </div>
+                <div className="bg-white rounded-lg p-4 shadow">
+                  <p className="text-sm text-gray-600">Total Sales</p>
+                  <p className="text-xl sm:text-2xl font-bold text-green-700">Rs. {overallTotals.totalSales.toFixed(2)}</p>
                 </div>
                 <div className="bg-white rounded-lg p-4 shadow">
                   <p className="text-sm text-gray-600">Total Profit</p>
-                  <p className="text-2xl font-bold text-emerald-700">Rs. {overallTotals.totalProfit.toFixed(2)}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-emerald-700">Rs. {overallTotals.totalProfit.toFixed(2)}</p>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Saved Records */}
-          {records.length > 0 && (
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Saved Records ({records.length})</h2>
-              <div className="space-y-4">
-                {records.map(record => {
-                  const totals = calculateRecordTotals(record);
-                  return (
-                    <div key={record.id} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <h3 className="font-bold text-lg text-gray-800">{record.patientName}</h3>
-                          <p className="text-sm text-gray-600">{record.date}</p>
-                        </div>
-                        <button
-                          onClick={() => deleteRecord(record.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 size={20} />
-                        </button>
-                      </div>
-                      
-                      {record.medicines.length > 0 && (
-                        <div className="overflow-x-auto mb-3">
-                          <table className="w-full text-sm">
-                            <thead className="bg-gray-200">
-                              <tr>
-                                <th className="px-2 py-1 text-left">Medicine</th>
-                                <th className="px-2 py-1 text-right">Qty</th>
-                                <th className="px-2 py-1 text-right">Purchase</th>
-                                <th className="px-2 py-1 text-right">Retail</th>
-                                <th className="px-2 py-1 text-right">Disc</th>
-                                <th className="px-2 py-1 text-right">Final</th>
-                                <th className="px-2 py-1 text-right">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {record.medicines.map(medicine => (
-                                <tr key={medicine.id} className="border-b">
-                                  <td className="px-2 py-1">{medicine.fullName}</td>
-                                  <td className="px-2 py-1 text-right">{medicine.quantity}</td>
-                                  <td className="px-2 py-1 text-right text-blue-600">{medicine.purchasePerUnit.toFixed(2)}</td>
-                                  <td className="px-2 py-1 text-right text-green-600">{medicine.retailPerUnit.toFixed(2)}</td>
-                                  <td className="px-2 py-1 text-right">{medicine.discount}%</td>
-                                  <td className="px-2 py-1 text-right font-semibold">{medicine.finalPrice.toFixed(2)}</td>
-                                  <td className="px-2 py-1 text-right font-bold">Rs. {calculateMedicineTotal(medicine).toFixed(2)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-white p-3 rounded">
-                        <div>
-                          <p className="text-xs text-gray-600">Medicine Sale</p>
-                          <p className="font-semibold text-green-700">Rs. {totals.medicineSale.toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-600">Doctor Fees</p>
-                          <p className="font-semibold text-blue-700">Rs. {record.doctorFees.toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-600">Total Sale</p>
-                          <p className="font-semibold text-indigo-700">Rs. {totals.totalSale.toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-600">Profit</p>
-                          <p className="font-semibold text-emerald-700">Rs. {totals.profit.toFixed(2)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
           )}
