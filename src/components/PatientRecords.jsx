@@ -9,19 +9,22 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
 
   const deleteRecord = (id) => {
     const record = records.find((r) => r.id === id);
+    if (!record) return;
+
     const updatedInventory = [...inventory];
-    record.medicines.forEach((medicine) => {
+    record.medicines?.forEach((medicine) => {
       const medIndex = updatedInventory.findIndex((m) => m.id === medicine.medicineId);
       if (medIndex !== -1) {
-        updatedInventory[medIndex].totalUnits += medicine.quantity;
+        updatedInventory[medIndex].totalUnits += medicine.quantity || 0;
       }
     });
+
     setInventory(updatedInventory);
     setRecords(records.filter((r) => r.id !== id));
   };
 
   const filteredRecords = records
-    .filter((record) => record.patientName.toLowerCase().includes(patientSearch.toLowerCase()))
+    .filter((record) => record.patientName?.toLowerCase().includes(patientSearch.toLowerCase()))
     .reduce((acc, record) => {
       const existing = acc.find((r) => r.patientName.toLowerCase() === record.patientName.toLowerCase());
       if (existing) {
@@ -59,6 +62,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
               </button>
             </div>
           </div>
+
           <div className="mb-6">
             <div className="relative">
               <Search className="absolute left-3 top-3 text-gray-400" size={20} />
@@ -71,6 +75,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
               />
             </div>
           </div>
+
           <div className="space-y-4">
             {filteredRecords.length > 0 ? (
               filteredRecords.map((patient, index) => (
@@ -84,12 +89,15 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                           <div>
                             <p className="text-sm text-gray-600">Date: {record.date}</p>
                             <p className="text-sm text-gray-600">Diagnosis: {record.diagnosis || 'None'}</p>
+                            <p className="text-sm text-gray-600">Blood Pressure: {record.bloodPressure || 'Not recorded'}</p>
+                            <p className="text-sm text-gray-600">Glucose: {record.glucose || 'Not recorded'}</p>
+                            <p className="text-sm text-gray-600">Temperature: {record.temperature || 'Not recorded'}</p>
                           </div>
                           <button onClick={() => deleteRecord(record.id)} className="text-red-600 hover:text-red-800">
                             <Trash2 size={20} />
                           </button>
                         </div>
-                        {record.medicines.length > 0 && <MedicineTable medicines={record.medicines} />}
+                        {record.medicines?.length > 0 && <MedicineTable medicines={record.medicines} />}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-3 rounded">
                           <div>
                             <p className="text-xs text-gray-600">Medicine Sale</p>
@@ -97,7 +105,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                           </div>
                           <div>
                             <p className="text-xs text-gray-600">Doctor Fees</p>
-                            <p className="font-semibold text-blue-700">Rs. {record.doctorFees.toFixed(2)}</p>
+                            <p className="font-semibold text-blue-700">Rs. {parseFloat(record.doctorFees || 0).toFixed(2)}</p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-600">Total Sale</p>

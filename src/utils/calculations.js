@@ -1,18 +1,19 @@
 // C:/Users/haide/Desktop/Naeem Medicare/src/utils/calculations.js
 export const calculateMedicineTotal = (medicine) => {
-  return medicine.quantity * medicine.finalPrice;
+  return (medicine.quantity ?? 0) * (medicine.finalPrice ?? 0);
 };
 
 export const calculateMedicineCost = (medicine) => {
-  return medicine.quantity * medicine.purchasePerUnit;
+  return (medicine.quantity ?? 0) * (medicine.purchaseRate ?? 0);
 };
 
 export const calculateRecordTotals = (record) => {
-  const medicineSale = record.medicines.reduce((sum, m) => sum + calculateMedicineTotal(m), 0);
-  const medicineCost = record.medicines.reduce((sum, m) => sum + calculateMedicineCost(m), 0);
-  const totalSale = medicineSale + parseFloat(record.doctorFees || 0);
+  const medicineSale = record.medicines?.reduce((sum, m) => sum + (calculateMedicineTotal(m) || 0), 0) || 0;
+  const medicineCost = record.medicines?.reduce((sum, m) => sum + (calculateMedicineCost(m) || 0), 0) || 0;
+  const doctorFees = parseFloat(record.doctorFees || 0);
+  const totalSale = medicineSale + doctorFees;
   const profit = totalSale - medicineCost;
-  return { medicineSale, medicineCost, totalSale, profit };
+  return { medicineSale, medicineCost, doctorFees, totalSale, profit };
 };
 
 export const calculateOverallTotals = (records) => {
@@ -21,8 +22,8 @@ export const calculateOverallTotals = (records) => {
   let totalDoctorFees = 0;
   records.forEach((record) => {
     const totals = calculateRecordTotals(record);
-    totalSales += totals.totalSale;
-    totalCosts += totals.medicineCost;
+    totalSales += totals.totalSale || 0;
+    totalCosts += totals.medicineCost || 0;
     totalDoctorFees += parseFloat(record.doctorFees || 0);
   });
   return {
@@ -41,28 +42,24 @@ export const exportToCSV = (records) => {
   let csv = '****** NAEEM MEDICARE ******\n';
   csv += 'Medical Practice Management System\n';
   csv += `Report Generated: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' })}\n\n`;
-  csv += 'Date,Patient Name,Diagnosis,Medicine,Quantity,Purchase Rate/Unit,Retail Rate/Unit,Discount %,Final Price/Unit,Medicine Total,Doctor Fees,Total Sale,Profit\n';
+  csv += 'Date,Patient Name,Diagnosis,Blood Pressure,Glucose,Temperature,Medicine,Quantity,Purchase Rate/Unit,Retail Rate/Unit,Discount %,Final Price/Unit,Medicine Total,Doctor Fees,Total Sale,Profit\n';
   records.forEach((record) => {
     const totals = calculateRecordTotals(record);
-    if (record.medicines.length > 0) {
+    if (record.medicines?.length > 0) {
       record.medicines.forEach((medicine, idx) => {
         const medicineTotal = calculateMedicineTotal(medicine);
-        csv += `${record.date},${record.patientName},"${record.diagnosis || ''}","${medicine.fullName}",${medicine.quantity},${medicine.purchasePerUnit.toFixed(
-          2
-        )},${medicine.retailPerUnit.toFixed(2)},${medicine.discount},${medicine.finalPrice.toFixed(2)},${medicineTotal.toFixed(2)},${
-          idx === 0 ? record.doctorFees : ''
-        },${idx === 0 ? totals.totalSale.toFixed(2) : ''},${idx === 0 ? totals.profit.toFixed(2) : ''}\n`;
+        csv += `${record.date},${record.patientName},"${record.diagnosis || ''}","${record.bloodPressure || 'Not recorded'}","${record.glucose || 'Not recorded'}","${record.temperature || 'Not recorded'}","${medicine.medicine || 'Unknown'}",${medicine.quantity ?? 0},${(medicine.purchaseRate ?? 0).toFixed(2)},${(medicine.retailRate ?? 0).toFixed(2)},${(medicine.discount ?? 0).toFixed(2)},${(medicine.finalPrice ?? 0).toFixed(2)},${(medicineTotal || 0).toFixed(2)},${idx === 0 ? (record.doctorFees || 0).toFixed(2) : ''},${idx === 0 ? (totals.totalSale || 0).toFixed(2) : ''},${idx === 0 ? (totals.profit || 0).toFixed(2) : ''}\n`;
       });
     } else {
-      csv += `${record.date},${record.patientName},"${record.diagnosis || ''}",,,,,,,${record.doctorFees},${totals.totalSale.toFixed(2)},${totals.profit.toFixed(2)}\n`;
+      csv += `${record.date},${record.patientName},"${record.diagnosis || ''}","${record.bloodPressure || 'Not recorded'}","${record.glucose || 'Not recorded'}","${record.temperature || 'Not recorded'}",,,,,,,${(record.doctorFees || 0).toFixed(2)},${(totals.totalSale || 0).toFixed(2)},${(totals.profit || 0).toFixed(2)}\n`;
     }
   });
   const overall = calculateOverallTotals(records);
-  csv += `\n,,,,,,,,,SUMMARY,,\n`;
-  csv += `,,,,,,,,,Total Sales,,Rs. ${overall.totalSales.toFixed(2)}\n`;
-  csv += `,,,,,,,,,Total Costs,,Rs. ${overall.totalCosts.toFixed(2)}\n`;
-  csv += `,,,,,,,,,Total Doctor Fees,,Rs. ${overall.totalDoctorFees.toFixed(2)}\n`;
-  csv += `,,,,,,,,,Total Profit,,Rs. ${overall.totalProfit.toFixed(2)}\n`;
+  csv += `\n,,,,,,,,,,,,SUMMARY,,\n`;
+  csv += `,,,,,,,,,,,,Total Sales,,Rs. ${(overall.totalSales || 0).toFixed(2)}\n`;
+  csv += `,,,,,,,,,,,,Total Costs,,Rs. ${(overall.totalCosts || 0).toFixed(2)}\n`;
+  csv += `,,,,,,,,,,,,Total Doctor Fees,,Rs. ${(overall.totalDoctorFees || 0).toFixed(2)}\n`;
+  csv += `,,,,,,,,,,,,Total Profit,,Rs. ${(overall.totalProfit || 0).toFixed(2)}\n`;
   csv += `\n****** Thank you for using Naeem Medicare ******\n`;
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = window.URL.createObjectURL(blob);
@@ -91,9 +88,7 @@ export const exportInventoryToCSV = (inventory) => {
     const retailPerUnit = med.packRetailRate / med.unitsPerPack;
     const totalPacks = Math.floor(med.totalUnits / med.unitsPerPack);
     const stockStatus = med.totalUnits === 0 ? 'Out of Stock' : 'In Stock';
-    csv += `"${med.name}",${med.strength},${med.type},${med.packPurchaseRate.toFixed(2)},${med.packRetailRate.toFixed(2)},${med.unitsPerPack},${totalPacks},${
-      med.totalUnits
-    },${stockStatus},${purchasePerUnit.toFixed(2)},${retailPerUnit.toFixed(2)}\n`;
+    csv += `"${med.name}",${med.strength},${med.type},${med.packPurchaseRate.toFixed(2)},${med.packRetailRate.toFixed(2)},${med.unitsPerPack},${totalPacks},${med.totalUnits},${stockStatus},${purchasePerUnit.toFixed(2)},${retailPerUnit.toFixed(2)}\n`;
   });
   csv += `\n****** Thank you for using Naeem Medicare ******\n`;
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

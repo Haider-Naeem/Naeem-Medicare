@@ -112,7 +112,7 @@ export default function DailyRecords({ records, setCurrentPage }) {
                               <td className="px-2 py-1">{record.patientName}</td>
                               <td className="px-2 py-1">{record.diagnosis || 'None'}</td>
                               <td className="px-2 py-1 text-right text-green-600">{totals.medicineSale.toFixed(2)}</td>
-                              <td className="px-2 py-1 text-right text-blue-600">{record.doctorFees.toFixed(2)}</td>
+                              <td className="px-2 py-1 text-right text-blue-600">{Number(record.doctorFees || 0).toFixed(2)}</td>
                               <td className="px-2 py-1 text-right text-indigo-600">{totals.totalSale.toFixed(2)}</td>
                               <td className="px-2 py-1 text-right text-emerald-600">{totals.profit.toFixed(2)}</td>
                             </tr>

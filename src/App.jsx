@@ -1,96 +1,76 @@
 // C:/Users/haide/Desktop/Naeem Medicare/src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { get, set } from 'idb-keyval';
+import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
+import { initializeApp } from 'firebase/app';
 import Home from './components/Home';
 import Inventory from './components/Inventory';
 import PatientRecords from './components/PatientRecords';
 import DailyRecords from './components/DailyRecords';
-import { INITIAL_MEDICINES } from './utils/constants';
 import { calculateOverallTotals } from './utils/calculations';
+import { INITIAL_MEDICINES } from './utils/constants';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBOzvqESqaxVJUDZBSb-y79Lgg_WYysBNg",
+  authDomain: "education-world-1f773.firebaseapp.com",
+  databaseURL: "https://education-world-1f773.firebaseio.com",
+  projectId: "education-world-1f773",
+  storageBucket: "education-world-1f773.firebasestorage.app",
+  messagingSenderId: "468123709060",
+  appId: "1:468123709060:web:42800d9ad83ba3890c9cd1",
+  measurementId: "G-XR0CDQZEQ2"
+};
+
+initializeApp(firebaseConfig);
+const db = getFirestore();
 
 export default function MedicalRecordsApp() {
-  const [currentPage, setCurrentPage] = useState('home');
-  const [inventory, setInventory] = useState(INITIAL_MEDICINES);
+  const [currentTab, setCurrentTab] = useState('home');
+  const [inventory, setInventory] = useState([]);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Load data from IndexedDB on mount
   useEffect(() => {
-    const loadData = async () => {
+    const fetchData = async () => {
       try {
-        console.log('Starting data fetch from IndexedDB...');
-        const inventoryResult = await get('medicalInventory');
-        const recordsResult = await get('medicalRecords');
+        const inventorySnapshot = await getDocs(collection(db, 'medicines'));
+        const inventoryData = inventorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setInventory(inventoryData.length ? inventoryData : INITIAL_MEDICINES);
 
-        if (inventoryResult) {
-          console.log('Inventory loaded:', inventoryResult);
-          setInventory(inventoryResult);
-        } else {
-          console.log('No inventory in IndexedDB, using INITIAL_MEDICINES');
-        }
-        if (recordsResult) {
-          console.log('Records loaded:', recordsResult);
-          setRecords(recordsResult);
-        } else {
-          console.log('No records in IndexedDB');
-        }
+        const recordsSnapshot = await getDocs(collection(db, 'patientRecords'));
+        const recordsData = recordsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setRecords(recordsData);
       } catch (error) {
-        console.error('Error loading data from IndexedDB:', error, error.stack);
+        console.error('Error loading data:', error);
         alert('Failed to load data. Using defaults.');
+        setInventory(INITIAL_MEDICINES);
       } finally {
-        console.log('Setting loading to false');
         setLoading(false);
       }
     };
-
-    loadData();
+    fetchData();
   }, []);
-
-  // Save inventory to IndexedDB
-  useEffect(() => {
-    if (!loading) {
-      const saveInventory = async () => {
-        try {
-          console.log('Saving inventory to IndexedDB:', inventory);
-          await set('medicalInventory', inventory);
-        } catch (error) {
-          console.error('Error saving inventory to IndexedDB:', error, error.stack);
-          alert('Failed to save inventory.');
-        }
-      };
-      saveInventory();
-    }
-  }, [inventory, loading]);
-
-  // Save records to IndexedDB
-  useEffect(() => {
-    if (!loading) {
-      const saveRecords = async () => {
-        try {
-          console.log('Saving records to IndexedDB:', records);
-          await set('medicalRecords', records);
-        } catch (error) {
-          console.error('Error saving records to IndexedDB:', error, error.stack);
-          alert('Failed to save records.');
-        }
-      };
-      saveRecords();
-    }
-  }, [records, loading]);
 
   const clearAllData = async () => {
     if (window.confirm('Are you sure you want to clear all data? This will delete all inventory and patient records.')) {
       try {
-        console.log('Clearing all data from IndexedDB...');
-        await set('medicalInventory', INITIAL_MEDICINES);
-        await set('medicalRecords', []);
+        const recordsSnapshot = await getDocs(collection(db, 'patientRecords'));
+        const recordDeletes = recordsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(recordDeletes);
+
+        const inventorySnapshot = await getDocs(collection(db, 'medicines'));
+        const inventoryDeletes = inventorySnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(inventoryDeletes);
+
+        const inventorySets = INITIAL_MEDICINES.map(med => setDoc(doc(db, 'medicines', med.id.toString()), med));
+        await Promise.all(inventorySets);
+
         setInventory(INITIAL_MEDICINES);
         setRecords([]);
         alert('All data cleared successfully!');
-        setCurrentPage('home');
+        setCurrentTab('home');
       } catch (error) {
-        console.error('Error clearing data from IndexedDB:', error, error.stack);
-        alert('Error clearing data. Please try again.');
+        console.error('Error clearing data:', error);
+        alert('Failed to clear data.');
       }
     }
   };
@@ -110,9 +90,9 @@ export default function MedicalRecordsApp() {
 
   return (
     <div className="min-h-screen">
-      {currentPage === 'home' && (
+      {currentTab === 'home' && (
         <Home
-          setCurrentPage={setCurrentPage}
+          setCurrentPage={setCurrentTab}
           inventory={inventory}
           setInventory={setInventory}
           records={records}
@@ -120,28 +100,25 @@ export default function MedicalRecordsApp() {
           overallTotals={overallTotals}
         />
       )}
-      {currentPage === 'inventory' && (
+      {currentTab === 'inventory' && (
         <Inventory
           inventory={inventory}
           setInventory={setInventory}
-          setCurrentPage={setCurrentPage}
+          setCurrentPage={setCurrentTab}
           clearAllData={clearAllData}
         />
       )}
-      {currentPage === 'patientRecords' && (
+      {currentTab === 'patientRecords' && (
         <PatientRecords
           records={records}
           setRecords={setRecords}
           inventory={inventory}
           setInventory={setInventory}
-          setCurrentPage={setCurrentPage}
+          setCurrentPage={setCurrentTab}
         />
       )}
-      {currentPage === 'dailyRecords' && (
-        <DailyRecords
-          records={records}
-          setCurrentPage={setCurrentPage}
-        />
+      {currentTab === 'dailyRecords' && (
+        <DailyRecords records={records} setCurrentPage={setCurrentTab} />
       )}
     </div>
   );
