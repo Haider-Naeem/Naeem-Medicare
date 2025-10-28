@@ -1,6 +1,8 @@
 // src/components/AddMedicineForm.jsx
 import React, { useState } from 'react';
 import { Plus, Search, Trash2 } from 'lucide-react';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { db } from '../utils/firebase';
 
 export default function AddMedicineForm({
   inventory,
@@ -69,85 +71,98 @@ export default function AddMedicineForm({
     return Number((price * (100 - discount)) / 100).toFixed(2);
   };
 
-  // ————————————————————————————————————————
-  // 4. ADD MEDICINE TO RECORD
-  // ————————————————————————————————————————
-  const addMedicine = () => {
-    if (!currentMedicine.medicineId || currentMedicine.quantity <= 0) {
-      alert('Please select a medicine and enter quantity.');
-      return;
-    }
+ // 4. ADD MEDICINE TO RECORD (LOCAL ONLY – Home.saveRecord will persist)
+// ————————————————————————————————————————
+const addMedicine = () => {
+  if (!currentMedicine.medicineId || currentMedicine.quantity <= 0) {
+    alert('Please select a medicine and enter quantity.');
+    return;
+  }
 
-    const medInInv = inventory.find((m) => m.id === currentMedicine.medicineId);
-    if (!medInInv || medInInv.totalUnits < currentMedicine.quantity) {
-      alert(`Not enough stock! Available: ${medInInv?.totalUnits ?? 0} units`);
-      return;
-    }
+  const med = inventory.find(m => m.id === currentMedicine.medicineId);
+  if (!med || med.totalUnits < currentMedicine.quantity) {
+    alert(`Not enough stock! Available: ${med?.totalUnits ?? 0} units`);
+    return;
+  }
 
-    // Deduct stock
-    const updatedInventory = inventory.map((m) =>
-      m.id === currentMedicine.medicineId
-        ? { ...m, totalUnits: m.totalUnits - currentMedicine.quantity }
-        : m
-    );
-    setInventory(updatedInventory);
+  // ---- ONLY UPDATE LOCAL STATE ----
+  const updatedInventory = inventory.map((m) =>
+    m.id === currentMedicine.medicineId
+      ? { ...m, totalUnits: m.totalUnits - currentMedicine.quantity }
+      : m
+  );
+  setInventory(updatedInventory);
 
-    // Build EXACT old record format
-    const finalTotal = Number(finalPricePerUnit()) * currentMedicine.quantity;
-    const medicineObj = {
-      medicine: currentMedicine.fullName,
-      fullName: currentMedicine.fullName,
-      name: currentMedicine.name,
-      medicineId: currentMedicine.medicineId,
-      quantity: currentMedicine.quantity,
-      purchaseRate: currentMedicine.purchaseRate,
-      retailRate: currentMedicine.retailRate,
-      pricePerUnit: currentMedicine.pricePerUnit,
-      discount: currentMedicine.discount,
-      finalPrice: Number(finalPricePerUnit()),
-      medicineTotal: Number(finalTotal.toFixed(2)),
-      id: Date.now(), // local UI id
-    };
-
-    setCurrentRecord({
-      ...currentRecord,
-      medicines: [...currentRecord.medicines, medicineObj],
-    });
-
-    // Reset form
-    setCurrentMedicine({
-      medicineId: null,
-      name: '',
-      fullName: '',
-      quantity: 1,
-      purchaseRate: 0,
-      retailRate: 0,
-      pricePerUnit: 0,
-      discount: 0,
-    });
-    setSearchTerm('');
+  const finalTotal = Number(finalPricePerUnit()) * currentMedicine.quantity;
+  const medicineObj = {
+    medicine: currentMedicine.fullName,
+    fullName: currentMedicine.fullName,
+    name: currentMedicine.name,
+    medicineId: currentMedicine.medicineId,
+    quantity: currentMedicine.quantity,
+    purchaseRate: currentMedicine.purchaseRate,
+    retailRate: currentMedicine.retailRate,
+    pricePerUnit: currentMedicine.pricePerUnit,
+    discount: currentMedicine.discount,
+    finalPrice: Number(finalPricePerUnit()),
+    medicineTotal: Number(finalTotal.toFixed(2)),
+    id: Date.now(),
   };
 
+  setCurrentRecord({
+    ...currentRecord,
+    medicines: [...currentRecord.medicines, medicineObj],
+  });
+
+  // Reset
+  setCurrentMedicine({
+    medicineId: null,
+    name: '',
+    fullName: '',
+    quantity: 1,
+    purchaseRate: 0,
+    retailRate: 0,
+    pricePerUnit: 0,
+    discount: 0,
+  });
+  setSearchTerm('');
+};
   // ————————————————————————————————————————
-  // 5. REMOVE MEDICINE FROM CURRENT RECORD
+  // 5. REMOVE MEDICINE FROM CURRENT RECORD (restore Firestore)
   // ————————————————————————————————————————
-  const removeMedicine = (localId) => {
+  const removeMedicine = async (localId) => {
     const medicine = currentRecord.medicines.find((m) => m.id === localId);
     if (!medicine) return;
 
+    // ---- 1. Get fresh medicine doc (unitsPerPack) ----
+    const medSnap = await getDoc(doc(db, 'medicines', medicine.medicineId));
+    if (!medSnap.exists()) return;
+    const med = { id: medSnap.id, ...medSnap.data() };
+
+    // ---- 2. Restore stock in Firestore ----
+    const newUnits = med.totalUnits + medicine.quantity;
+    await setDoc(
+      doc(db, 'medicines', medicine.medicineId),
+      {
+        totalUnits: newUnits,
+        totalPacks: Math.floor(newUnits / med.unitsPerPack),
+        stockStatus: newUnits > 0 ? 'In Stock' : 'Out of Stock',
+      },
+      { merge: true }
+    );
+
+    // ---- 3. Update local inventory prop ----
     const updatedInventory = inventory.map((m) =>
-      m.id === medicine.medicineId
-        ? { ...m, totalUnits: m.totalUnits + medicine.quantity }
-        : m
+      m.id === medicine.medicineId ? { ...m, totalUnits: newUnits } : m
     );
     setInventory(updatedInventory);
 
+    // ---- 4. Remove from current record ----
     setCurrentRecord({
       ...currentRecord,
       medicines: currentRecord.medicines.filter((m) => m.id !== localId),
     });
   };
-
   // ————————————————————————————————————————
   // UI RENDER
   // ————————————————————————————————————————
