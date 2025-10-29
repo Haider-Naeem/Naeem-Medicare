@@ -4,7 +4,7 @@ import { Calculator, Home, Download, Search, Trash2, Edit3, X } from 'lucide-rea
 import MedicineTable from './MedicineTable';
 import AddMedicineForm from './AddMedicineForm';
 import { calculateRecordTotals, exportToCSV } from '../utils/calculations';
-import { doc, deleteDoc, updateDoc, setDoc,getDoc } from "firebase/firestore";
+import { doc, deleteDoc, setDoc, getDoc } from "firebase/firestore";
 import { db } from "../utils/firebase";
 
 export default function PatientRecords({ records, setRecords, inventory, setInventory, setCurrentPage }) {
@@ -22,49 +22,49 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
   });
 
   // ————————————————————————————————————————
-  // DELETE RECORD (uses FULL RECORD, not just id)
+  // DELETE RECORD
   // ————————————————————————————————————————
   const deleteRecord = async (record) => {
-  if (!window.confirm("Delete this record permanently?")) return;
+    if (!window.confirm("Delete this record permanently?")) return;
 
-  try {
-    // 1. Delete from Firestore
-    await deleteDoc(doc(db, "patientRecords", record.id));
+    try {
+      // 1. Delete from Firestore
+      await deleteDoc(doc(db, "patientRecords", record.id));
 
-    // 2. Restore inventory in Firestore
-    const restorePromises = (record.medicines || []).map(async (med) => {
-      const medRef = doc(db, 'medicines', med.medicineId);
-      const snap = await getDoc(medRef);
-      if (!snap.exists()) return;
+      // 2. Restore inventory in Firestore
+      const restorePromises = (record.medicines || []).map(async (med) => {
+        const medRef = doc(db, 'medicines', med.medicineId);
+        const snap = await getDoc(medRef);
+        if (!snap.exists()) return;
 
-      const fresh = snap.data();
-      const newUnits = (fresh.totalUnits || 0) + med.quantity;
-      const unitsPerPack = fresh.unitsPerPack || 1;
+        const fresh = snap.data();
+        const newUnits = (fresh.totalUnits || 0) + med.quantity;
+        const unitsPerPack = fresh.unitsPerPack || 1;
 
-      return setDoc(medRef, {
-        totalUnits: newUnits,
-        totalPacks: Math.floor(newUnits / unitsPerPack),
-        stockStatus: newUnits > 0 ? 'In Stock' : 'Out of Stock',
-      }, { merge: true });
-    });
+        return setDoc(medRef, {
+          totalUnits: newUnits,
+          totalPacks: Math.floor(newUnits / unitsPerPack),
+          stockStatus: newUnits > 0 ? 'In Stock' : 'Out of Stock',
+        }, { merge: true });
+      });
 
-    await Promise.all(restorePromises);
+      await Promise.all(restorePromises);
 
-    // 3. Update local UI
-    const updatedInventory = [...inventory];
-    record.medicines?.forEach((med) => {
-      const idx = updatedInventory.findIndex(m => m.id === med.medicineId);
-      if (idx !== -1) updatedInventory[idx].totalUnits += med.quantity;
-    });
-    setInventory(updatedInventory);
-    setRecords(records.filter(r => r.id !== record.id));
+      // 3. Update local UI
+      const updatedInventory = [...inventory];
+      record.medicines?.forEach((med) => {
+        const idx = updatedInventory.findIndex(m => m.id === med.medicineId);
+        if (idx !== -1) updatedInventory[idx].totalUnits += med.quantity;
+      });
+      setInventory(updatedInventory);
+      setRecords(records.filter(r => r.id !== record.id));
 
-    alert("Record deleted and stock restored!");
-  } catch (error) {
-    console.error(error);
-    alert("Failed: " + error.message);
-  }
-};
+      alert("Record deleted and stock restored!");
+    } catch (error) {
+      console.error(error);
+      alert("Failed: " + error.message);
+    }
+  };
 
   // ————————————————————————————————————————
   // OPEN EDIT MODAL
@@ -84,7 +84,38 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
   };
 
   // ————————————————————————————————————————
-  // SAVE EDITED RECORD
+  // Helper: compare two medicine arrays
+  // ————————————————————————————————————————
+  const getMedicineDiff = (oldMeds, newMeds) => {
+    const oldMap = new Map(oldMeds.map(m => [m.medicineId, m]));
+    const newMap = new Map(newMeds.map(m => [m.medicineId, m]));
+
+    const added = [];
+    const removed = [];
+    const changed = [];
+
+    // Look for added / qty-increased
+    for (const [id, newMed] of newMap) {
+      const oldMed = oldMap.get(id);
+      if (!oldMed) {
+        added.push(newMed);
+      } else if (oldMed.quantity !== newMed.quantity) {
+        changed.push({ old: oldMed, new: newMed });
+      }
+    }
+
+    // Look for removed medicines
+    for (const [id, oldMed] of oldMap) {
+      if (!newMap.has(id)) {
+        removed.push(oldMed);
+      }
+    }
+
+    return { added, removed, changed };
+  };
+
+  // ————————————————————————————————————————
+  // SAVE EDITED RECORD (with Firestore inventory update)
   // ————————————————————————————————————————
   const saveEdit = async () => {
     if (!editForm.patientName.trim()) return alert("Patient name is required.");
@@ -100,41 +131,81 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
         updatedAt: new Date().toISOString(),
       };
 
-      // Save to Firestore using original.id (Firestore doc ID)
-      await setDoc(doc(db, "patientRecords", original.id), updatedRecord, { merge: true });
-
-      // ——————————————————————
-      // INVENTORY: RESTORE OLD → DEDUCT NEW
-      // ——————————————————————
+      // -----------------------------------------------------------------
+      // 1. Calculate inventory changes
+      // -----------------------------------------------------------------
+      const diff = getMedicineDiff(original.medicines || [], updatedRecord.medicines);
       const inv = [...inventory];
 
-      // 1. Restore old medicines
-      original.medicines?.forEach((med) => {
-        const idx = inv.findIndex((m) => m.id === med.medicineId);
-        if (idx !== -1) {
-          inv[idx].totalUnits += med.quantity || 0;
-        }
+      // RESTORE removed medicines
+      for (const med of diff.removed) {
+        const idx = inv.findIndex(m => m.id === med.medicineId);
+        if (idx !== -1) inv[idx].totalUnits += med.quantity;
+      }
+
+      // RESTORE old qty of changed medicines
+      for (const { old: oldMed } of diff.changed) {
+        const idx = inv.findIndex(m => m.id === oldMed.medicineId);
+        if (idx !== -1) inv[idx].totalUnits += oldMed.quantity;
+      }
+
+      // DEDUCT added medicines
+      for (const med of diff.added) {
+        const idx = inv.findIndex(m => m.id === med.medicineId);
+        if (idx === -1) throw new Error(`Medicine ${med.medicine} not found in inventory`);
+        if (inv[idx].totalUnits < med.quantity)
+          throw new Error(`Not enough stock for ${med.medicine}`);
+        inv[idx].totalUnits -= med.quantity;
+      }
+
+      // DEDUCT new qty of changed medicines
+      for (const { new: newMed } of diff.changed) {
+        const idx = inv.findIndex(m => m.id === newMed.medicineId);
+        if (idx === -1) throw new Error(`Medicine ${newMed.medicine} not found in inventory`);
+        if (inv[idx].totalUnits < newMed.quantity)
+          throw new Error(`Not enough stock for ${newMed.medicine}`);
+        inv[idx].totalUnits -= newMed.quantity;
+      }
+
+      // -----------------------------------------------------------------
+      // 2. PERSIST INVENTORY CHANGES TO FIRESTORE
+      // -----------------------------------------------------------------
+      const changedMedicineIds = new Set([
+        ...diff.added.map(m => m.medicineId),
+        ...diff.removed.map(m => m.medicineId),
+        ...diff.changed.map(c => c.old.medicineId)
+      ]);
+
+      const inventoryUpdates = Array.from(changedMedicineIds).map(async (medicineId) => {
+        const medRef = doc(db, 'medicines', medicineId);
+        const snap = await getDoc(medRef);
+        if (!snap.exists()) return;
+
+        const fresh = snap.data();
+        const unitsPerPack = fresh.unitsPerPack || 1;
+        const updatedMed = inv.find(m => m.id === medicineId);
+        if (!updatedMed) return;
+
+        return setDoc(medRef, {
+          totalUnits: updatedMed.totalUnits,
+          totalPacks: Math.floor(updatedMed.totalUnits / unitsPerPack),
+          stockStatus: updatedMed.totalUnits > 0 ? 'In Stock' : 'Out of Stock',
+        }, { merge: true });
       });
 
-      // 2. Deduct new medicines
-      updatedRecord.medicines.forEach((med) => {
-        const idx = inv.findIndex((m) => m.id === med.medicineId);
-        if (idx !== -1) {
-          if (inv[idx].totalUnits < med.quantity) {
-            throw new Error(`Not enough stock for ${med.medicine}`);
-          }
-          inv[idx].totalUnits -= med.quantity;
-        }
-      });
+      await Promise.all(inventoryUpdates);
 
+      // -----------------------------------------------------------------
+      // 3. UPDATE RECORD IN FIRESTORE
+      // -----------------------------------------------------------------
+      await setDoc(doc(db, "patientRecords", original.id), updatedRecord, { merge: true });
+
+      // -----------------------------------------------------------------
+      // 4. UPDATE LOCAL STATE
+      // -----------------------------------------------------------------
       setInventory(inv);
+      setRecords(records.map(r => (r.id === original.id ? { ...r, ...updatedRecord } : r)));
 
-      // ——————————————————————
-      // UPDATE LOCAL STATE
-      // ——————————————————————
-      setRecords(records.map((r) => (r.id === original.id ? { ...r, ...updatedRecord } : r)));
-
-      // Close modal
       setEditingRecord(null);
       alert("Record updated successfully!");
     } catch (error) {
@@ -226,7 +297,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                                 <Edit3 size={20} />
                               </button>
                               <button
-                                onClick={() => deleteRecord(record)} // ← Pass FULL record
+                                onClick={() => deleteRecord(record)}
                                 className="text-red-600 hover:text-red-800"
                                 title="Delete Record"
                               >

@@ -4,7 +4,7 @@ import { Plus, X, Calculator, Package, Download } from 'lucide-react';
 import AddMedicineForm from './AddMedicineForm';
 import SummaryCard from './SummaryCard';
 import { exportToCSV as exportRecordsToCSV, calculateRecordTotals } from '../utils/calculations';
-import { addDoc, collection, doc, setDoc ,getDoc} from 'firebase/firestore';
+import { addDoc, collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 
 const getCurrentDate = () =>
@@ -50,76 +50,104 @@ export default function Home({
   // --------------------------------------------------------------
   // SAVE RECORD — Firestore auto-ID + inventory update
   // --------------------------------------------------------------
-const saveRecord = async () => {
-  try {
-    // Validation
-    if (!currentRecord.patientName.trim()) return alert('Patient name is required.');
-    if (!currentRecord.diagnosis.trim()) return alert('Diagnosis is required.');
-    if (!currentRecord.date) return alert('Select a valid date.');
+  const saveRecord = async () => {
+    try {
+      // Validation
+      if (!currentRecord.patientName.trim()) return alert('Patient name is required.');
+      if (!currentRecord.diagnosis.trim()) return alert('Diagnosis is required.');
+      if (!currentRecord.date) return alert('Select a valid date.');
 
-    const doctorFees = parseFloat(currentRecord.doctorFees || 0);
-    if (isNaN(doctorFees)) return alert('Enter a valid doctor fee.');
+      const doctorFees = parseFloat(currentRecord.doctorFees || 0);
+      if (isNaN(doctorFees)) return alert('Enter a valid doctor fee.');
 
-    if (currentRecord.medicines.length === 0 && doctorFees === 0)
-      return alert('Add at least one medicine or non-zero doctor fees.');
+      if (currentRecord.medicines.length === 0 && doctorFees === 0)
+        return alert('Add at least one medicine or non-zero doctor fees.');
 
-    // Build record object
-    const newRecord = {
-      ...currentRecord,
-      doctorFees: doctorFees.toFixed(2),
-      createdAt: new Date().toISOString(),
-      bloodPressure: currentRecord.bloodPressure || 'Not recorded',
-      glucose: currentRecord.glucose || 'Not recorded',
-      temperature: currentRecord.temperature || 'Not recorded',
-    };
-
-    // ---- STEP 1: Validate ONLY (no deduction) ----
-    for (const med of newRecord.medicines) {
-      const invMed = inventory.find(m => m.id === med.medicineId);
-      if (!invMed) {
-        return alert(`Medicine not found in inventory.`);
+      // ---- STEP 1: Validate stock availability (check ORIGINAL inventory) ----
+      for (const med of currentRecord.medicines) {
+        const invMed = inventory.find(m => m.id === med.medicineId);
+        if (!invMed) {
+          return alert(`Medicine not found in inventory.`);
+        }
+        
+        // Calculate total quantity already used in this record
+        const totalUsed = currentRecord.medicines
+          .filter(m => m.medicineId === med.medicineId)
+          .reduce((sum, m) => sum + m.quantity, 0);
+        
+        if (invMed.totalUnits < totalUsed) {
+          return alert(`Not enough stock for ${invMed.name}. Available: ${invMed.totalUnits}, Required: ${totalUsed}`);
+        }
       }
-      if (invMed.totalUnits < med.quantity) {
-        return alert(`Not enough stock for ${invMed.name}. Available: ${invMed.totalUnits}`);
+
+      // Build record object
+      const newRecord = {
+        ...currentRecord,
+        doctorFees: doctorFees.toFixed(2),
+        createdAt: new Date().toISOString(),
+        bloodPressure: currentRecord.bloodPressure || 'Not recorded',
+        glucose: currentRecord.glucose || 'Not recorded',
+        temperature: currentRecord.temperature || 'Not recorded',
+      };
+
+      // ---- STEP 2: Calculate inventory updates ----
+      const updatedInventory = [...inventory];
+      const medicineUpdates = new Map(); // Track qty changes per medicine
+
+      // Sum up quantities for each unique medicine
+      for (const med of newRecord.medicines) {
+        const current = medicineUpdates.get(med.medicineId) || 0;
+        medicineUpdates.set(med.medicineId, current + med.quantity);
       }
+
+      // Apply deductions
+      for (const [medicineId, totalQty] of medicineUpdates) {
+        const idx = updatedInventory.findIndex(m => m.id === medicineId);
+        if (idx !== -1) {
+          updatedInventory[idx] = {
+            ...updatedInventory[idx],
+            totalUnits: updatedInventory[idx].totalUnits - totalQty
+          };
+        }
+      }
+
+      // ---- STEP 3: Save record to Firestore ----
+      const docRef = await addDoc(collection(db, 'patientRecords'), newRecord);
+      const recordWithId = { ...newRecord, id: docRef.id };
+      await setDoc(doc(db, 'patientRecords', docRef.id), { id: docRef.id }, { merge: true });
+
+      // ---- STEP 4: PERSIST INVENTORY CHANGES TO FIRESTORE (only changed medicines) ----
+      const batchWrites = Array.from(medicineUpdates.keys()).map(async (medicineId) => {
+        const medRef = doc(db, 'medicines', medicineId);
+        const snap = await getDoc(medRef);
+        if (!snap.exists()) return;
+
+        const fresh = snap.data();
+        const unitsPerPack = fresh.unitsPerPack || 1;
+        const updatedMed = updatedInventory.find(m => m.id === medicineId);
+        if (!updatedMed) return;
+
+        return setDoc(medRef, {
+          totalUnits: updatedMed.totalUnits,
+          totalPacks: Math.floor(updatedMed.totalUnits / unitsPerPack),
+          stockStatus: updatedMed.totalUnits > 0 ? 'In Stock' : 'Out of Stock',
+        }, { merge: true });
+      });
+      await Promise.all(batchWrites);
+
+      // ---- STEP 5: Update UI state ----
+      setRecords((prev) => [...prev, recordWithId]);
+      setInventory(updatedInventory);
+
+      const totals = calculateRecordTotals(recordWithId);
+      alert(`Record saved!\nTotal Sale: Rs. ${totals.totalSale.toFixed(2)}`);
+
+      resetForm();
+    } catch (error) {
+      console.error('Error saving record:', error);
+      alert('Failed to save: ' + error.message);
     }
-
-    // Use the already-updated inventory from AddMedicineForm
-    const updatedInventory = [...inventory];
-
-    // ---- STEP 2: Save record to Firestore ----
-    const docRef = await addDoc(collection(db, 'patientRecords'), newRecord);
-    const recordWithId = { ...newRecord, id: docRef.id };
-    await setDoc(doc(db, 'patientRecords', docRef.id), { id: docRef.id }, { merge: true });
-
-    // ---- STEP 3: PERSIST INVENTORY CHANGES TO FIRESTORE ----
-    const batchWrites = updatedInventory.map(async (med) => {
-      const medRef = doc(db, 'medicines', med.id);
-      const snap = await getDoc(medRef);
-      const fresh = snap.data();
-      const unitsPerPack = fresh.unitsPerPack || 1;
-
-      return setDoc(medRef, {
-        totalUnits: med.totalUnits,
-        totalPacks: Math.floor(med.totalUnits / unitsPerPack),
-        stockStatus: med.totalUnits > 0 ? 'In Stock' : 'Out of Stock',
-      }, { merge: true });
-    });
-    await Promise.all(batchWrites);
-
-    // ---- STEP 4: Update UI state ----
-    setRecords((prev) => [...prev, recordWithId]);
-    setInventory(updatedInventory);
-
-    const totals = calculateRecordTotals(recordWithId);
-    alert(`Record saved!\nTotal Sale: Rs. ${totals.totalSale.toFixed(2)}`);
-
-    resetForm();
-  } catch (error) {
-    console.error('Error saving record:', error);
-    alert('Failed to save: ' + error.message);
-  }
-};
+  };
 
   // --------------------------------------------------------------
   // RESTORE CSV BACKUP
@@ -197,54 +225,89 @@ const saveRecord = async () => {
 
           {/* ---- Patient Info ---- */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <input
-              type="text"
-              placeholder="Patient Name *"
-              value={currentRecord.patientName}
-              onChange={(e) => setCurrentRecord({ ...currentRecord, patientName: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
-            <input
-              type="date"
-              value={currentRecord.date}
-              onChange={(e) => setCurrentRecord({ ...currentRecord, date: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
-            <textarea
-              placeholder="Diagnosis *"
-              value={currentRecord.diagnosis}
-              onChange={(e) => setCurrentRecord({ ...currentRecord, diagnosis: e.target.value })}
-              className="px-3 py-2 border rounded-md sm:col-span-2"
-              rows={2}
-            />
-            <input
-              type="text"
-              placeholder="Blood Pressure"
-              value={currentRecord.bloodPressure}
-              onChange={(e) => setCurrentRecord({ ...currentRecord, bloodPressure: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
-            <input
-              type="text"
-              placeholder="Glucose"
-              value={currentRecord.glucose}
-              onChange={(e) => setCurrentRecord({ ...currentRecord, glucose: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
-            <input
-              type="text"
-              placeholder="Temperature"
-              value={currentRecord.temperature}
-              onChange={(e) => setCurrentRecord({ ...currentRecord, temperature: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
-            <input
-              type="number"
-              placeholder="Doctor Fees (Rs.)"
-              value={currentRecord.doctorFees}
-              onChange={(e) => setCurrentRecord({ ...currentRecord, doctorFees: e.target.value })}
-              className="px-3 py-2 border rounded-md"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Patient Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Enter patient name"
+                value={currentRecord.patientName}
+                onChange={(e) => setCurrentRecord({ ...currentRecord, patientName: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                value={currentRecord.date}
+                onChange={(e) => setCurrentRecord({ ...currentRecord, date: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Diagnosis <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                placeholder="Enter diagnosis details"
+                value={currentRecord.diagnosis}
+                onChange={(e) => setCurrentRecord({ ...currentRecord, diagnosis: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500"
+                rows={2}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Blood Pressure
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., 120/80"
+                value={currentRecord.bloodPressure}
+                onChange={(e) => setCurrentRecord({ ...currentRecord, bloodPressure: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Glucose
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., 100 mg/dL"
+                value={currentRecord.glucose}
+                onChange={(e) => setCurrentRecord({ ...currentRecord, glucose: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Temperature
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., 98.6°F"
+                value={currentRecord.temperature}
+                onChange={(e) => setCurrentRecord({ ...currentRecord, temperature: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Doctor Fees (Rs.)
+              </label>
+              <input
+                type="number"
+                placeholder="Enter doctor fees"
+                value={currentRecord.doctorFees}
+                onChange={(e) => setCurrentRecord({ ...currentRecord, doctorFees: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
 
           {/* ---- Add Medicines ---- */}

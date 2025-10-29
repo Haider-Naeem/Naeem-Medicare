@@ -1,8 +1,6 @@
 // src/components/AddMedicineForm.jsx
 import React, { useState } from 'react';
 import { Plus, Search, Trash2 } from 'lucide-react';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../utils/firebase';
 
 export default function AddMedicineForm({
   inventory,
@@ -24,7 +22,22 @@ export default function AddMedicineForm({
   });
 
   // ————————————————————————————————————————
-  // 1. SAFE FILTERING (no crash on bad data)
+  // HELPER: Calculate available stock considering medicines already added to current record
+  // ————————————————————————————————————————
+  const getAvailableStock = (medicineId) => {
+    const med = inventory.find(m => m.id === medicineId);
+    if (!med) return 0;
+
+    // Calculate how much of this medicine is already in the current record
+    const alreadyUsed = currentRecord.medicines
+      .filter(m => m.medicineId === medicineId)
+      .reduce((sum, m) => sum + m.quantity, 0);
+
+    return med.totalUnits - alreadyUsed;
+  };
+
+  // ————————————————————————————————————————
+  // SAFE FILTERING (no crash on bad data)
   // ————————————————————————————————————————
   const filteredMedicines = inventory.filter((med) => {
     if (!med || !med.name) return false;
@@ -34,7 +47,7 @@ export default function AddMedicineForm({
   });
 
   // ————————————————————————————————————————
-  // 2. SELECT MEDICINE
+  // SELECT MEDICINE
   // ————————————————————————————————————————
   const selectMedicine = (medicine) => {
     if (!medicine) return;
@@ -63,7 +76,7 @@ export default function AddMedicineForm({
   };
 
   // ————————————————————————————————————————
-  // 3. FINAL PRICE PER UNIT (after discount)
+  // FINAL PRICE PER UNIT (after discount)
   // ————————————————————————————————————————
   const finalPricePerUnit = () => {
     const discount = currentMedicine.discount || 0;
@@ -71,98 +84,67 @@ export default function AddMedicineForm({
     return Number((price * (100 - discount)) / 100).toFixed(2);
   };
 
- // 4. ADD MEDICINE TO RECORD (LOCAL ONLY – Home.saveRecord will persist)
-// ————————————————————————————————————————
-const addMedicine = () => {
-  if (!currentMedicine.medicineId || currentMedicine.quantity <= 0) {
-    alert('Please select a medicine and enter quantity.');
-    return;
-  }
+  // ————————————————————————————————————————
+  // ADD MEDICINE TO RECORD (NO INVENTORY UPDATE)
+  // ————————————————————————————————————————
+  const addMedicine = () => {
+    if (!currentMedicine.medicineId || currentMedicine.quantity <= 0) {
+      alert('Please select a medicine and enter quantity.');
+      return;
+    }
 
-  const med = inventory.find(m => m.id === currentMedicine.medicineId);
-  if (!med || med.totalUnits < currentMedicine.quantity) {
-    alert(`Not enough stock! Available: ${med?.totalUnits ?? 0} units`);
-    return;
-  }
+    // Check available stock (considering medicines already added)
+    const availableStock = getAvailableStock(currentMedicine.medicineId);
+    if (availableStock < currentMedicine.quantity) {
+      alert(`Not enough stock! Available: ${availableStock} units`);
+      return;
+    }
 
-  // ---- ONLY UPDATE LOCAL STATE ----
-  const updatedInventory = inventory.map((m) =>
-    m.id === currentMedicine.medicineId
-      ? { ...m, totalUnits: m.totalUnits - currentMedicine.quantity }
-      : m
-  );
-  setInventory(updatedInventory);
+    const finalTotal = Number(finalPricePerUnit()) * currentMedicine.quantity;
+    const medicineObj = {
+      medicine: currentMedicine.fullName,
+      fullName: currentMedicine.fullName,
+      name: currentMedicine.name,
+      medicineId: currentMedicine.medicineId,
+      quantity: currentMedicine.quantity,
+      purchaseRate: currentMedicine.purchaseRate,
+      retailRate: currentMedicine.retailRate,
+      pricePerUnit: currentMedicine.pricePerUnit,
+      discount: currentMedicine.discount,
+      finalPrice: Number(finalPricePerUnit()),
+      medicineTotal: Number(finalTotal.toFixed(2)),
+      id: Date.now(),
+    };
 
-  const finalTotal = Number(finalPricePerUnit()) * currentMedicine.quantity;
-  const medicineObj = {
-    medicine: currentMedicine.fullName,
-    fullName: currentMedicine.fullName,
-    name: currentMedicine.name,
-    medicineId: currentMedicine.medicineId,
-    quantity: currentMedicine.quantity,
-    purchaseRate: currentMedicine.purchaseRate,
-    retailRate: currentMedicine.retailRate,
-    pricePerUnit: currentMedicine.pricePerUnit,
-    discount: currentMedicine.discount,
-    finalPrice: Number(finalPricePerUnit()),
-    medicineTotal: Number(finalTotal.toFixed(2)),
-    id: Date.now(),
+    setCurrentRecord({
+      ...currentRecord,
+      medicines: [...currentRecord.medicines, medicineObj],
+    });
+
+    // Reset form
+    setCurrentMedicine({
+      medicineId: null,
+      name: '',
+      fullName: '',
+      quantity: 1,
+      purchaseRate: 0,
+      retailRate: 0,
+      pricePerUnit: 0,
+      discount: 0,
+    });
+    setSearchTerm('');
   };
 
-  setCurrentRecord({
-    ...currentRecord,
-    medicines: [...currentRecord.medicines, medicineObj],
-  });
-
-  // Reset
-  setCurrentMedicine({
-    medicineId: null,
-    name: '',
-    fullName: '',
-    quantity: 1,
-    purchaseRate: 0,
-    retailRate: 0,
-    pricePerUnit: 0,
-    discount: 0,
-  });
-  setSearchTerm('');
-};
   // ————————————————————————————————————————
-  // 5. REMOVE MEDICINE FROM CURRENT RECORD (restore Firestore)
+  // REMOVE MEDICINE FROM CURRENT RECORD
   // ————————————————————————————————————————
-  const removeMedicine = async (localId) => {
-    const medicine = currentRecord.medicines.find((m) => m.id === localId);
-    if (!medicine) return;
-
-    // ---- 1. Get fresh medicine doc (unitsPerPack) ----
-    const medSnap = await getDoc(doc(db, 'medicines', medicine.medicineId));
-    if (!medSnap.exists()) return;
-    const med = { id: medSnap.id, ...medSnap.data() };
-
-    // ---- 2. Restore stock in Firestore ----
-    const newUnits = med.totalUnits + medicine.quantity;
-    await setDoc(
-      doc(db, 'medicines', medicine.medicineId),
-      {
-        totalUnits: newUnits,
-        totalPacks: Math.floor(newUnits / med.unitsPerPack),
-        stockStatus: newUnits > 0 ? 'In Stock' : 'Out of Stock',
-      },
-      { merge: true }
-    );
-
-    // ---- 3. Update local inventory prop ----
-    const updatedInventory = inventory.map((m) =>
-      m.id === medicine.medicineId ? { ...m, totalUnits: newUnits } : m
-    );
-    setInventory(updatedInventory);
-
-    // ---- 4. Remove from current record ----
+  const removeMedicine = (localId) => {
     setCurrentRecord({
       ...currentRecord,
       medicines: currentRecord.medicines.filter((m) => m.id !== localId),
     });
   };
+
   // ————————————————————————————————————————
   // UI RENDER
   // ————————————————————————————————————————
@@ -193,33 +175,36 @@ const addMedicine = () => {
           {showSuggestions && searchTerm && (
             <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg">
               {filteredMedicines.length > 0 ? (
-                filteredMedicines.map((med) => (
-                  <div
-                    key={med.id}
-                    onClick={() => selectMedicine(med)}
-                    className="px-3 py-2 hover:bg-indigo-100 cursor-pointer border-b"
-                  >
-                    <div className="font-medium">
-                      {med.name} {med.strength}{' '}
-                      {med.totalUnits === 0 && (
-                        <span className="text-red-600 text-xs font-bold">
-                          [Out of Stock]
+                filteredMedicines.map((med) => {
+                  const availableStock = getAvailableStock(med.id);
+                  return (
+                    <div
+                      key={med.id}
+                      onClick={() => selectMedicine(med)}
+                      className="px-3 py-2 hover:bg-indigo-100 cursor-pointer border-b"
+                    >
+                      <div className="font-medium">
+                        {med.name} {med.strength}{' '}
+                        {availableStock === 0 && (
+                          <span className="text-red-600 text-xs font-bold">
+                            [Out of Stock]
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        {med.type} | Stock: {med.totalUnits} units | Available: {availableStock} units
+                      </div>
+                      <div className="text-xs flex gap-2 mt-1">
+                        <span className="text-blue-600 font-medium">
+                          Pack Purchase: Rs.{med.packPurchaseRate?.toFixed(2) || '0.00'}
                         </span>
-                      )}
+                        <span className="text-green-600 font-medium">
+                          Pack Retail: Rs.{med.packRetailRate?.toFixed(2) || '0.00'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-600">
-                      {med.type} | Stock: {med.totalUnits} units
-                    </div>
-                    <div className="text-xs flex gap-2 mt-1">
-                      <span className="text-blue-600 font-medium">
-                        Pack Purchase: Rs.{med.packPurchaseRate?.toFixed(2) || '0.00'}
-                      </span>
-                      <span className="text-green-600 font-medium">
-                        Pack Retail: Rs.{med.packRetailRate?.toFixed(2) || '0.00'}
-                      </span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="px-3 py-2 text-gray-500">No medicines found</div>
               )}
