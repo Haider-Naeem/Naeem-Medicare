@@ -1,6 +1,6 @@
 // src/components/AddMedicineForm.jsx
-import React, { useState } from 'react';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Search, Trash2, DollarSign } from 'lucide-react';
 
 export default function AddMedicineForm({
   inventory,
@@ -22,13 +22,19 @@ export default function AddMedicineForm({
   });
 
   // ————————————————————————————————————————
-  // HELPER: Calculate available stock considering medicines already added to current record
+  // LIVE CART TOTAL (NEW!)
+  // ————————————————————————————————————————
+  const cartTotal = useMemo(() => {
+    return currentRecord.medicines.reduce((sum, m) => sum + m.medicineTotal, 0);
+  }, [currentRecord.medicines]);
+
+  // ————————————————————————————————————————
+  // HELPER: Calculate available stock
   // ————————————————————————————————————————
   const getAvailableStock = (medicineId) => {
     const med = inventory.find(m => m.id === medicineId);
     if (!med) return 0;
 
-    // Calculate how much of this medicine is already in the current record
     const alreadyUsed = currentRecord.medicines
       .filter(m => m.medicineId === medicineId)
       .reduce((sum, m) => sum + m.quantity, 0);
@@ -36,9 +42,8 @@ export default function AddMedicineForm({
     return med.totalUnits - alreadyUsed;
   };
 
-  // ————————————————————————————————————————
-  // SAFE FILTERING (no crash on bad data)
-  // ————————————————————————————————————————
+  // ... rest of your existing functions remain the same ...
+
   const filteredMedicines = inventory.filter((med) => {
     if (!med || !med.name) return false;
     const full = `${med.name} ${med.strength || ''}`.trim();
@@ -46,9 +51,6 @@ export default function AddMedicineForm({
     return full.toLowerCase().includes(search);
   });
 
-  // ————————————————————————————————————————
-  // SELECT MEDICINE
-  // ————————————————————————————————————————
   const selectMedicine = (medicine) => {
     if (!medicine) return;
 
@@ -75,25 +77,18 @@ export default function AddMedicineForm({
     setShowSuggestions(false);
   };
 
-  // ————————————————————————————————————————
-  // FINAL PRICE PER UNIT (after discount)
-  // ————————————————————————————————————————
   const finalPricePerUnit = () => {
     const discount = currentMedicine.discount || 0;
     const price = currentMedicine.pricePerUnit || 0;
     return Number((price * (100 - discount)) / 100).toFixed(2);
   };
 
-  // ————————————————————————————————————————
-  // ADD MEDICINE TO RECORD (NO INVENTORY UPDATE)
-  // ————————————————————————————————————————
   const addMedicine = () => {
     if (!currentMedicine.medicineId || currentMedicine.quantity <= 0) {
       alert('Please select a medicine and enter quantity.');
       return;
     }
 
-    // Check available stock (considering medicines already added)
     const availableStock = getAvailableStock(currentMedicine.medicineId);
     if (availableStock < currentMedicine.quantity) {
       alert(`Not enough stock! Available: ${availableStock} units`);
@@ -121,7 +116,6 @@ export default function AddMedicineForm({
       medicines: [...currentRecord.medicines, medicineObj],
     });
 
-    // Reset form
     setCurrentMedicine({
       medicineId: null,
       name: '',
@@ -135,9 +129,6 @@ export default function AddMedicineForm({
     setSearchTerm('');
   };
 
-  // ————————————————————————————————————————
-  // REMOVE MEDICINE FROM CURRENT RECORD
-  // ————————————————————————————————————————
   const removeMedicine = (localId) => {
     setCurrentRecord({
       ...currentRecord,
@@ -150,9 +141,33 @@ export default function AddMedicineForm({
   // ————————————————————————————————————————
   return (
     <div className="bg-white rounded-lg p-4 mb-4">
-      <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3">
-        Add Medicine
-      </h3>
+      {/* 🔥 LIVE CART TOTAL - NEW! 🔥 */}
+      <div className={`p-4 rounded-lg mb-4 flex items-center gap-4 ${
+        cartTotal > 0 
+          ? 'bg-gradient-to-r from-emerald-50 to-green-100 border-2 border-green-200' 
+          : 'bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200'
+      }`}>
+        <div className="p-2 bg-green-500 rounded-full">
+          <DollarSign className="w-6 h-6 text-white" />
+        </div>
+        <div className="flex-1">
+          <div className="text-xs text-gray-600 uppercase tracking-wide font-medium">
+            {cartTotal > 0 ? 'Cart Total' : 'Add Medicines'}
+          </div>
+          <div className={`text-2xl font-bold ${
+            cartTotal > 0 ? 'text-green-800' : 'text-gray-500'
+          }`}>
+            Rs. {cartTotal.toFixed(2)}
+          </div>
+        </div>
+        <div className={`px-3 py-1 rounded-full text-sm font-semibold ${
+          cartTotal > 0 
+            ? 'bg-green-100 text-green-800' 
+            : 'bg-gray-100 text-gray-500'
+        }`}>
+          {currentRecord.medicines.length} items
+        </div>
+      </div>
 
       {/* INPUT GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-3">
@@ -172,6 +187,7 @@ export default function AddMedicineForm({
             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500"
             placeholder="Search medicine..."
           />
+          {/* ... suggestions dropdown ... */}
           {showSuggestions && searchTerm && (
             <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg">
               {filteredMedicines.length > 0 ? (
@@ -214,9 +230,7 @@ export default function AddMedicineForm({
 
         {/* QUANTITY */}
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Quantity
-          </label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
           <input
             type="number"
             min="1"
@@ -233,9 +247,7 @@ export default function AddMedicineForm({
 
         {/* DISCOUNT */}
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Discount (%)
-          </label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Discount (%)</label>
           <input
             type="number"
             min="0"
@@ -254,9 +266,7 @@ export default function AddMedicineForm({
 
         {/* FINAL PRICE PER UNIT */}
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Final / Unit
-          </label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Final / Unit</label>
           <div className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm font-semibold text-center">
             Rs. {finalPricePerUnit()}
           </div>
@@ -264,9 +274,7 @@ export default function AddMedicineForm({
 
         {/* ADD BUTTON */}
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            &nbsp;
-          </label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">&nbsp;</label>
           <button
             onClick={addMedicine}
             disabled={!currentMedicine.medicineId}
@@ -295,9 +303,9 @@ export default function AddMedicineForm({
             </thead>
             <tbody>
               {currentRecord.medicines.map((m) => (
-                <tr key={m.id} className="border-b">
-                  <td className="px-2 py-2">{m.medicine}</td>
-                  <td className="px-2 py-2 text-right">{m.quantity}</td>
+                <tr key={m.id} className="border-b hover:bg-gray-50">
+                  <td className="px-2 py-2 font-medium">{m.medicine}</td>
+                  <td className="px-2 py-2 text-right font-semibold">{m.quantity}</td>
                   <td className="px-2 py-2 text-right text-blue-600">
                     {m.purchaseRate.toFixed(2)}
                   </td>
@@ -308,13 +316,13 @@ export default function AddMedicineForm({
                   <td className="px-2 py-2 text-right font-semibold">
                     {m.finalPrice.toFixed(2)}
                   </td>
-                  <td className="px-2 py-2 text-right font-bold text-indigo-700">
+                  <td className="px-2 py-2 text-right font-bold text-indigo-700 bg-indigo-50 rounded">
                     Rs. {m.medicineTotal.toFixed(2)}
                   </td>
                   <td className="px-2 py-2">
                     <button
                       onClick={() => removeMedicine(m.id)}
-                      className="text-red-600 hover:text-red-800"
+                      className="text-red-600 hover:text-red-800 p-1 hover:bg-red-100 rounded transition-all"
                     >
                       <Trash2 size={16} />
                     </button>
