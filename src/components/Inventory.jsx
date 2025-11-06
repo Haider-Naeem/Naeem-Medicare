@@ -45,8 +45,8 @@ export default function Inventory({
     packPurchaseRate: 0,
     packRetailRate: 0,
     unitsPerPack: 1,
-    initialPacks: 0,      // NEW – full packs
-    initialLooseUnits: 0, // NEW – extra units not in a full pack
+    initialPacks: 0,      // keep original name
+    initialLooseUnits: 0, // keep original name
   });
 
   // -------------------------------------------------------------
@@ -128,7 +128,6 @@ export default function Inventory({
 
     try {
       if (editingMedicine) {
-        // ---- EDIT: keep existing totalUnits ----
         const existing = propInventory.find(m => m.id === editingMedicine.id);
         const updated = {
           ...baseObj,
@@ -138,7 +137,6 @@ export default function Inventory({
         };
         await setDoc(doc(db, 'medicines', editingMedicine.id), updated, { merge: true });
       } else {
-        // ---- NEW: packs + loose units ----
         const totalUnits = newMedicine.initialPacks * newMedicine.unitsPerPack + newMedicine.initialLooseUnits;
         const newMed = {
           ...baseObj,
@@ -149,7 +147,6 @@ export default function Inventory({
         await addDoc(collection(db, 'medicines'), newMed);
       }
 
-      // ---- reset form ----
       setNewMedicine({
         name: '',
         strength: '',
@@ -190,45 +187,45 @@ export default function Inventory({
   };
 
   // -------------------------------------------------------------
-  // UPDATE STOCK (packs + loose units)
+  // UPDATE STOCK – MODAL (exactly like InventoryManager.jsx)
   // -------------------------------------------------------------
-  const updateStock = async (medicineId) => {
-    const med = propInventory.find(m => m.id === medicineId);
-    if (!med) return;
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [selectedMed, setSelectedMed] = useState(null);
+  const [packsDelta, setPacksDelta] = useState('');
+  const [looseDelta, setLooseDelta] = useState('');
 
-    const promptText = `Current: ${med.totalUnits} units (${Math.floor(med.totalUnits / med.unitsPerPack)} packs + ${med.totalUnits % med.unitsPerPack} loose)\n` +
-                       `Enter packs to add/sub (e.g. +2 or -1) OR loose units (e.g. +5u or -3u):`;
+  const openAdjustModal = (med) => {
+    setSelectedMed(med);
+    setPacksDelta('');
+    setLooseDelta('');
+    setShowAdjustModal(true);
+  };
 
-    const input = window.prompt(promptText);
-    if (input === null) return;
+  const applyStockAdjustment = async () => {
+    if (!selectedMed) return;
 
-    let packsDelta = 0;
-    let unitsDelta = 0;
+    const p = parseInt(packsDelta) || 0;
+    const l = parseInt(looseDelta) || 0;
 
-    const matchPacks = input.match(/^([+-]?\d+)$/);
-    const matchUnits = input.match(/^([+-]?\d+)u$/i);
-
-    if (matchPacks) {
-      packsDelta = parseInt(matchPacks[1], 10) || 0;
-    } else if (matchUnits) {
-      unitsDelta = parseInt(matchUnits[1], 10) || 0;
-    } else {
-      alert('Invalid format. Use +2, -1, +5u, -3u');
-      return;
-    }
-
-    const newTotalUnits = Math.max(0, med.totalUnits + packsDelta * med.unitsPerPack + unitsDelta);
+    const newTotalUnits = Math.max(
+      0,
+      selectedMed.totalUnits + p * selectedMed.unitsPerPack + l
+    );
 
     try {
       await setDoc(
-        doc(db, 'medicines', medicineId),
+        doc(db, 'medicines', selectedMed.id),
         {
           totalUnits: newTotalUnits,
-          totalPacks: Math.floor(newTotalUnits / med.unitsPerPack),
+          totalPacks: Math.floor(newTotalUnits / selectedMed.unitsPerPack),
           stockStatus: newTotalUnits > 0 ? 'In Stock' : 'Out of Stock',
         },
         { merge: true }
       );
+      setShowAdjustModal(false);
+      setSelectedMed(null);
+      setPacksDelta('');
+      setLooseDelta('');
     } catch (e) {
       console.error(e);
       alert('Failed to update stock.');
@@ -608,9 +605,9 @@ export default function Inventory({
                         </button>
 
                         <button
-                          onClick={() => updateStock(med.id)}
+                          onClick={() => openAdjustModal(med)}
                           className="p-2 bg-green-500 text-white rounded hover:bg-green-600"
-                          title="Update Stock (packs or loose units)"
+                          title="Adjust Stock"
                         >
                           <Package size={16} />
                         </button>
@@ -636,6 +633,61 @@ export default function Inventory({
             </div>
           )}
         </div>
+
+        {/* ---------- STOCK ADJUST MODAL (same as InventoryManager) ---------- */}
+        {showAdjustModal && selectedMed && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Package className="text-purple-600" />
+                Adjust Stock – {selectedMed.name} {selectedMed.strength}
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">
+                    Packs (+/-)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g. +2 or -1"
+                    value={packsDelta}
+                    onChange={(e) => setPacksDelta(e.target.value)}
+                    className="w-full px-4 py-2 border-2 border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">
+                    Loose Units (+/-)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g. +5 or -3"
+                    value={looseDelta}
+                    onChange={(e) => setLooseDelta(e.target.value)}
+                    className="w-full px-4 py-2 border-2 border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={applyStockAdjustment}
+                  className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white py-2 rounded-xl hover:from-green-700 hover:to-emerald-700 font-bold"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={() => setShowAdjustModal(false)}
+                  className="flex-1 bg-gradient-to-r from-gray-500 to-gray-600 text-white py-2 rounded-xl hover:from-gray-600 hover:to-gray-700 font-bold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
