@@ -1,7 +1,8 @@
 // src/components/Inventory.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Trash2, Download, Package, Edit2, X, Search, Home,
+  ArrowUpDown,
 } from 'lucide-react';
 import {
   collection, doc, setDoc, deleteDoc, addDoc, onSnapshot,
@@ -35,6 +36,8 @@ export default function Inventory({
   const [showAddMedicine, setShowAddMedicine] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState(null);
   const [inventorySearch, setInventorySearch] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
   const [newMedicine, setNewMedicine] = useState({
     name: '',
     strength: '',
@@ -42,11 +45,12 @@ export default function Inventory({
     packPurchaseRate: 0,
     packRetailRate: 0,
     unitsPerPack: 1,
-    initialPacks: 1, // only for new medicine
+    initialPacks: 0,      // NEW – full packs
+    initialLooseUnits: 0, // NEW – extra units not in a full pack
   });
 
   // -------------------------------------------------------------
-  // REAL-TIME FIRESTORE SYNC (uses 'medicines' collection)
+  // REAL-TIME FIRESTORE SYNC
   // -------------------------------------------------------------
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'medicines'), (snap) => {
@@ -100,7 +104,7 @@ export default function Inventory({
   };
 
   // -------------------------------------------------------------
-  // SAVE / UPDATE MEDICINE (writes to 'medicines')
+  // SAVE / UPDATE MEDICINE
   // -------------------------------------------------------------
   const saveMedicineToInventory = async () => {
     if (!newMedicine.name.trim() || !newMedicine.strength.trim()) {
@@ -134,12 +138,12 @@ export default function Inventory({
         };
         await setDoc(doc(db, 'medicines', editingMedicine.id), updated, { merge: true });
       } else {
-        // ---- NEW: calculate initial totalUnits ----
-        const totalUnits = newMedicine.initialPacks * newMedicine.unitsPerPack;
+        // ---- NEW: packs + loose units ----
+        const totalUnits = newMedicine.initialPacks * newMedicine.unitsPerPack + newMedicine.initialLooseUnits;
         const newMed = {
           ...baseObj,
           totalUnits,
-          totalPacks: newMedicine.initialPacks,
+          totalPacks: Math.floor(totalUnits / newMedicine.unitsPerPack),
           stockStatus: totalUnits > 0 ? 'In Stock' : 'Out of Stock',
         };
         await addDoc(collection(db, 'medicines'), newMed);
@@ -153,7 +157,8 @@ export default function Inventory({
         packPurchaseRate: 0,
         packRetailRate: 0,
         unitsPerPack: 1,
-        initialPacks: 1,
+        initialPacks: 0,
+        initialLooseUnits: 0,
       });
       setEditingMedicine(null);
       setShowAddMedicine(false);
@@ -167,6 +172,9 @@ export default function Inventory({
   // EDIT
   // -------------------------------------------------------------
   const editMedicine = (med) => {
+    const fullPacks = Math.floor(med.totalUnits / med.unitsPerPack);
+    const loose = med.totalUnits % med.unitsPerPack;
+
     setEditingMedicine(med);
     setNewMedicine({
       name: med.name,
@@ -175,20 +183,42 @@ export default function Inventory({
       packPurchaseRate: med.packPurchaseRate,
       packRetailRate: med.packRetailRate,
       unitsPerPack: med.unitsPerPack,
-      initialPacks: Math.floor(med.totalUnits / med.unitsPerPack),
+      initialPacks: fullPacks,
+      initialLooseUnits: loose,
     });
     setShowAddMedicine(true);
   };
 
   // -------------------------------------------------------------
-  // UPDATE STOCK (packs) — writes to 'medicines'
+  // UPDATE STOCK (packs + loose units)
   // -------------------------------------------------------------
-  const updateStock = async (medicineId, packsDelta) => {
-    if (isNaN(packsDelta)) return;
+  const updateStock = async (medicineId) => {
     const med = propInventory.find(m => m.id === medicineId);
     if (!med) return;
 
-    const newTotalUnits = Math.max(0, med.totalUnits + packsDelta * med.unitsPerPack);
+    const promptText = `Current: ${med.totalUnits} units (${Math.floor(med.totalUnits / med.unitsPerPack)} packs + ${med.totalUnits % med.unitsPerPack} loose)\n` +
+                       `Enter packs to add/sub (e.g. +2 or -1) OR loose units (e.g. +5u or -3u):`;
+
+    const input = window.prompt(promptText);
+    if (input === null) return;
+
+    let packsDelta = 0;
+    let unitsDelta = 0;
+
+    const matchPacks = input.match(/^([+-]?\d+)$/);
+    const matchUnits = input.match(/^([+-]?\d+)u$/i);
+
+    if (matchPacks) {
+      packsDelta = parseInt(matchPacks[1], 10) || 0;
+    } else if (matchUnits) {
+      unitsDelta = parseInt(matchUnits[1], 10) || 0;
+    } else {
+      alert('Invalid format. Use +2, -1, +5u, -3u');
+      return;
+    }
+
+    const newTotalUnits = Math.max(0, med.totalUnits + packsDelta * med.unitsPerPack + unitsDelta);
+
     try {
       await setDoc(
         doc(db, 'medicines', medicineId),
@@ -206,7 +236,7 @@ export default function Inventory({
   };
 
   // -------------------------------------------------------------
-  // DELETE — from 'medicines'
+  // DELETE
   // -------------------------------------------------------------
   const deleteMedicine = async (id) => {
     if (!window.confirm('Delete this medicine permanently?')) return;
@@ -219,11 +249,52 @@ export default function Inventory({
   };
 
   // -------------------------------------------------------------
-  // FILTER
+  // FILTER + SORT
   // -------------------------------------------------------------
-  const filteredInventory = propInventory.filter((m) =>
-    `${m.name} ${m.strength}`.toLowerCase().includes(inventorySearch.toLowerCase())
-  );
+  const filteredAndSorted = useMemo(() => {
+    let list = propInventory.filter((m) =>
+      `${m.name} ${m.strength}`.toLowerCase().includes(inventorySearch.toLowerCase())
+    );
+
+    const statusWeight = (status) => {
+      if (status === 'Out of Stock') return 0;
+      if (status === 'Low Stock') return 1;
+      return 2; // In Stock
+    };
+
+    if (sortConfig.key) {
+      list.sort((a, b) => {
+        let aVal = a[sortConfig.key];
+        let bVal = b[sortConfig.key];
+
+        if (sortConfig.key === 'stockStatus') {
+          aVal = statusWeight(aVal);
+          bVal = statusWeight(bVal);
+        }
+
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return list;
+  }, [propInventory, inventorySearch, sortConfig]);
+
+  // -------------------------------------------------------------
+  // SORT HANDLER
+  // -------------------------------------------------------------
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (column) => {
+    if (sortConfig.key !== column) return null;
+    return sortConfig.direction === 'asc' ? <ArrowUpDown size={14} /> : <ArrowUpDown size={14} className="rotate-180" />;
+  };
 
   // -------------------------------------------------------------
   // RENDER
@@ -303,7 +374,8 @@ export default function Inventory({
                 packPurchaseRate: 0,
                 packRetailRate: 0,
                 unitsPerPack: 1,
-                initialPacks: 1,
+                initialPacks: 0,
+                initialLooseUnits: 0,
               });
             }
           }}
@@ -412,27 +484,43 @@ export default function Inventory({
                 />
               </div>
 
-              {/* Initial Packs (new only) */}
-              {!editingMedicine && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Initial Packs</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={newMedicine.initialPacks}
-                    onChange={(e) =>
-                      setNewMedicine({
-                        ...newMedicine,
-                        initialPacks: parseInt(e.target.value) || 0,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-              )}
+              {/* Initial Packs */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Initial Packs</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newMedicine.initialPacks}
+                  onChange={(e) =>
+                    setNewMedicine({
+                      ...newMedicine,
+                      initialPacks: parseInt(e.target.value) || 0,
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              {/* Initial Loose Units */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Initial Loose Units</label>
+                <input
+                  type="number"
+                  min="0"
+                  max={newMedicine.unitsPerPack - 1}
+                  value={newMedicine.initialLooseUnits}
+                  onChange={(e) =>
+                    setNewMedicine({
+                      ...newMedicine,
+                      initialLooseUnits: Math.min(parseInt(e.target.value) || 0, newMedicine.unitsPerPack - 1),
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
 
               {/* SAVE */}
-              <div className="flex items-end">
+              <div className="col-span-1 sm:col-span-2 lg:col-span-4 flex items-end">
                 <button
                   onClick={saveMedicineToInventory}
                   className="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 font-semibold"
@@ -455,20 +543,39 @@ export default function Inventory({
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-purple-600 text-white">
-                <th className="p-3 text-left">Medicine</th>
-                <th className="p-3 text-left">Type</th>
-                <th className="p-3 text-right">Purchase/Pack</th>
-                <th className="p-3 text-right">Retail/Pack</th>
-                <th className="p-3 text-right">Units/Pack</th>
+                <th className="p-3 text-left cursor-pointer" onClick={() => requestSort('name')}>
+                  Medicine {getSortIcon('name')}
+                </th>
+                <th className="p-3 text-left cursor-pointer" onClick={() => requestSort('type')}>
+                  Type {getSortIcon('type')}
+                </th>
+                <th className="p-3 text-right cursor-pointer" onClick={() => requestSort('packPurchaseRate')}>
+                  Purchase/Pack {getSortIcon('packPurchaseRate')}
+                </th>
+                <th className="p-3 text-right cursor-pointer" onClick={() => requestSort('packRetailRate')}>
+                  Retail/Pack {getSortIcon('packRetailRate')}
+                </th>
+                <th className="p-3 text-right cursor-pointer" onClick={() => requestSort('unitsPerPack')}>
+                  Units/Pack {getSortIcon('unitsPerPack')}
+                </th>
                 <th className="p-3 text-right">Total Packs</th>
-                <th className="p-3 text-right">Total Units</th>
-                <th className="p-3 text-center">Status</th>
+                <th className="p-3 text-right cursor-pointer" onClick={() => requestSort('totalUnits')}>
+                  Total Units {getSortIcon('totalUnits')}
+                </th>
+                <th className="p-3 text-center cursor-pointer" onClick={() => requestSort('stockStatus')}>
+                  Status {getSortIcon('stockStatus')}
+                </th>
                 <th className="p-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredInventory.map((med, idx) => {
-                const currentPacks = Math.floor(med.totalUnits / med.unitsPerPack);
+              {filteredAndSorted.map((med, idx) => {
+                const fullPacks = Math.floor(med.totalUnits / med.unitsPerPack);
+                const loose = med.totalUnits % med.unitsPerPack;
+                const status =
+                  med.totalUnits > 10 ? 'In Stock' :
+                  med.totalUnits > 0 ? 'Low Stock' : 'Out of Stock';
+
                 return (
                   <tr key={med.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                     <td className="p-3">
@@ -479,15 +586,15 @@ export default function Inventory({
                     <td className="p-3 text-right">Rs. {med.packPurchaseRate.toFixed(2)}</td>
                     <td className="p-3 text-right">Rs. {med.packRetailRate.toFixed(2)}</td>
                     <td className="p-3 text-right">{med.unitsPerPack}</td>
-                    <td className="p-3 text-right">{currentPacks}</td>
+                    <td className="p-3 text-right">{fullPacks}</td>
                     <td className="p-3 text-right font-semibold">{med.totalUnits}</td>
                     <td className="p-3 text-center">
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        med.totalUnits > 10 ? 'bg-green-200 text-green-800' :
-                        med.totalUnits > 0 ? 'bg-yellow-200 text-yellow-800' :
+                        status === 'In Stock' ? 'bg-green-200 text-green-800' :
+                        status === 'Low Stock' ? 'bg-yellow-200 text-yellow-800' :
                         'bg-red-200 text-red-800'
                       }`}>
-                        {med.totalUnits > 10 ? 'In Stock' : med.totalUnits > 0 ? 'Low Stock' : 'Out of Stock'}
+                        {status}
                       </span>
                     </td>
                     <td className="p-3">
@@ -501,12 +608,9 @@ export default function Inventory({
                         </button>
 
                         <button
-                          onClick={() => {
-                            const packs = prompt('Enter packs to add (negative to subtract):');
-                            if (packs !== null) updateStock(med.id, parseInt(packs) || 0);
-                          }}
+                          onClick={() => updateStock(med.id)}
                           className="p-2 bg-green-500 text-white rounded hover:bg-green-600"
-                          title="Update Stock"
+                          title="Update Stock (packs or loose units)"
                         >
                           <Package size={16} />
                         </button>
@@ -526,7 +630,7 @@ export default function Inventory({
             </tbody>
           </table>
 
-          {filteredInventory.length === 0 && (
+          {filteredAndSorted.length === 0 && (
             <div className="text-center py-8 text-gray-500">
               No medicines found. Add your first medicine to get started!
             </div>

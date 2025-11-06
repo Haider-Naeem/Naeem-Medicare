@@ -253,6 +253,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                 >
                   <Download size={18} /> Export Records
                 </button>
+                
               </div>
             </div>
 
