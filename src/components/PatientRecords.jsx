@@ -15,6 +15,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
     diagnosis: '',
     date: '',
     doctorFees: '0',
+    totalCashCollected: '0',
     bloodPressure: '',
     glucose: '',
     temperature: '',
@@ -76,6 +77,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
       diagnosis: record.diagnosis || '',
       date: record.date || '',
       doctorFees: record.doctorFees || '0',
+      totalCashCollected: record.totalCashCollected || '0',
       bloodPressure: record.bloodPressure || '',
       glucose: record.glucose || '',
       temperature: record.temperature || '',
@@ -128,6 +130,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
       const updatedRecord = {
         ...editForm,
         doctorFees: parseFloat(editForm.doctorFees || 0).toFixed(2),
+        totalCashCollected: parseFloat(editForm.totalCashCollected || 0).toFixed(2),
         updatedAt: new Date().toISOString(),
       };
 
@@ -215,10 +218,16 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
   };
 
   // ————————————————————————————————————————
-  // FILTER & GROUP RECORDS
+  // FILTER & GROUP RECORDS (SORTED LATEST FIRST)
   // ————————————————————————————————————————
   const filteredRecords = records
     .filter((record) => record.patientName?.toLowerCase().includes(patientSearch.toLowerCase()))
+    .sort((a, b) => {
+      // Sort by date (latest first), then by createdAt timestamp
+      const dateCompare = (b.date || '').localeCompare(a.date || '');
+      if (dateCompare !== 0) return dateCompare;
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
+    })
     .reduce((acc, record) => {
       const existing = acc.find((r) => r.patientName.toLowerCase() === record.patientName.toLowerCase());
       if (existing) {
@@ -396,6 +405,13 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                 placeholder="Temperature"
                 value={editForm.temperature}
                 onChange={(e) => setEditForm({ ...editForm, temperature: e.target.value })}
+                className="px-3 py-2 border rounded-md"
+              />
+              <input
+                type="number"
+                placeholder="Total Cash Collected"
+                value={editForm.totalCashCollected}
+                onChange={(e) => setEditForm({ ...editForm, totalCashCollected: e.target.value })}
                 className="px-3 py-2 border rounded-md"
               />
               <input

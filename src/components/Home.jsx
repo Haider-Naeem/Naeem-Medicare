@@ -1,8 +1,7 @@
 // src/components/Home.jsx
 import React, { useState } from 'react';
-import { Plus, X, Calculator, Package, Download } from 'lucide-react';
+import { Plus, X, Calculator, Package, Download, TrendingUp, DollarSign } from 'lucide-react';
 import AddMedicineForm from './AddMedicineForm';
-import SummaryCard from './SummaryCard';
 import { exportToCSV as exportRecordsToCSV, calculateRecordTotals } from '../utils/calculations';
 import { addDoc, collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
@@ -14,6 +13,43 @@ const getCurrentDate = () =>
     month: '2-digit',
     day: '2-digit',
   });
+
+// Modern StatsCard Component (matching DailyRecords style)
+function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purple' }) {
+  const colorClasses = {
+    purple: 'from-purple-600 to-indigo-600',
+    blue: 'from-blue-600 to-cyan-600',
+    green: 'from-green-600 to-emerald-600',
+    orange: 'from-orange-600 to-red-600',
+    emerald: 'from-emerald-600 to-teal-600'
+  };
+
+  return (
+    <div className={`bg-gradient-to-r ${colorClasses[color]} rounded-xl shadow-lg p-4 text-white transition-all relative overflow-hidden`}>
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute -right-4 -top-4 w-20 h-20 bg-white rounded-full"></div>
+        <div className="absolute -left-2 -bottom-2 w-16 h-16 bg-white rounded-full"></div>
+      </div>
+
+      {/* Content */}
+      <div className="relative z-10">
+        <div className="flex justify-between items-start mb-2">
+          <p className="text-white/80 text-sm font-medium">{title}</p>
+          {Icon && <Icon size={20} className="text-white/50" />}
+        </div>
+        
+        <p className="text-3xl font-bold mt-1">
+          {isCurrency && '₨'}
+          {isCurrency 
+            ? typeof value === 'number' ? value.toFixed(0) : value 
+            : value
+          }
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function Home({
   setCurrentPage,
@@ -29,6 +65,7 @@ export default function Home({
     date: getCurrentDate(),
     medicines: [],
     doctorFees: '0',
+    totalCashCollected: '0',
     bloodPressure: '',
     glucose: '',
     temperature: '',
@@ -41,11 +78,31 @@ export default function Home({
       date: getCurrentDate(),
       medicines: [],
       doctorFees: '0',
+      totalCashCollected: '0',
       bloodPressure: '',
       glucose: '',
       temperature: '',
     });
   };
+
+  // Calculate medicine total from current record
+  const medicineTotalAmount = currentRecord.medicines.reduce((sum, m) => sum + m.medicineTotal, 0);
+
+  // Auto-calculate doctor fees based on cash collected
+  const calculatedDoctorFees = () => {
+    const cashCollected = parseFloat(currentRecord.totalCashCollected || 0);
+    const fees = cashCollected - medicineTotalAmount;
+    return fees >= 0 ? fees : 0;
+  };
+
+  // Update doctor fees whenever cash collected or medicine total changes
+  React.useEffect(() => {
+    const fees = calculatedDoctorFees();
+    setCurrentRecord(prev => ({
+      ...prev,
+      doctorFees: fees.toFixed(2)
+    }));
+  }, [currentRecord.totalCashCollected, medicineTotalAmount]);
 
   // --------------------------------------------------------------
   // SAVE RECORD — Firestore auto-ID + inventory update
@@ -58,10 +115,18 @@ export default function Home({
       if (!currentRecord.date) return alert('Select a valid date.');
 
       const doctorFees = parseFloat(currentRecord.doctorFees || 0);
+      const cashCollected = parseFloat(currentRecord.totalCashCollected || 0);
+      
       if (isNaN(doctorFees)) return alert('Enter a valid doctor fee.');
+      if (isNaN(cashCollected)) return alert('Enter valid cash collected amount.');
 
       if (currentRecord.medicines.length === 0 && doctorFees === 0)
         return alert('Add at least one medicine or non-zero doctor fees.');
+
+      // Validate cash collected vs medicine total
+      if (cashCollected < medicineTotalAmount) {
+        return alert(`Cash collected (Rs. ${cashCollected.toFixed(2)}) is less than medicine total (Rs. ${medicineTotalAmount.toFixed(2)})`);
+      }
 
       // ---- STEP 1: Validate stock availability (check ORIGINAL inventory) ----
       for (const med of currentRecord.medicines) {
@@ -84,6 +149,7 @@ export default function Home({
       const newRecord = {
         ...currentRecord,
         doctorFees: doctorFees.toFixed(2),
+        totalCashCollected: cashCollected.toFixed(2),
         createdAt: new Date().toISOString(),
         bloodPressure: currentRecord.bloodPressure || 'Not recorded',
         glucose: currentRecord.glucose || 'Not recorded',
@@ -140,7 +206,7 @@ export default function Home({
       setInventory(updatedInventory);
 
       const totals = calculateRecordTotals(recordWithId);
-      alert(`Record saved!\nTotal Sale: Rs. ${totals.totalSale.toFixed(2)}`);
+      alert(`Record saved!\nMedicine Total: Rs. ${medicineTotalAmount.toFixed(2)}\nDoctor Fees: Rs. ${doctorFees.toFixed(2)}\nTotal Cash Collected: Rs. ${cashCollected.toFixed(2)}`);
 
       resetForm();
     } catch (error) {
@@ -149,33 +215,29 @@ export default function Home({
     }
   };
 
-  // --------------------------------------------------------------
-  // RESTORE CSV BACKUP
-  // --------------------------------------------------------------
-  const restoreFromCSV = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+  // Calculate overall stats with proper profit calculations
+  const enhancedOverallTotals = React.useMemo(() => {
+    let medicineCost = 0;
+    let medicineSale = 0;
+    let doctorFees = 0;
 
-    try {
-      const text = await file.text();
-      const rows = text.split('\n').map((r) => r.trim()).filter(Boolean);
-      const headers = rows.shift().split(',');
+    records.forEach(record => {
+      const recordTotals = calculateRecordTotals(record);
+      medicineCost += recordTotals.medicineCost;
+      medicineSale += recordTotals.medicineSale;
+      doctorFees += parseFloat(record.doctorFees || 0);
+    });
 
-      const restoredRecords = rows.map((row) => {
-        const values = row.split(',');
-        return headers.reduce((obj, header, i) => {
-          obj[header.trim()] = values[i] ? values[i].trim() : '';
-          return obj;
-        }, {});
-      });
+    const medicineProfit = medicineSale - medicineCost;
+    const totalProfit = medicineProfit + doctorFees;
 
-      setRecords(restoredRecords);
-      alert('✅ Backup restored successfully!');
-    } catch (error) {
-      console.error('Error restoring backup:', error);
-      alert('❌ Failed to restore backup file.');
-    }
-  };
+    return {
+      medicineCost,
+      medicineProfit,
+      doctorFees,
+      totalProfit
+    };
+  }, [records]);
 
   // --------------------------------------------------------------
   // UI
@@ -298,13 +360,13 @@ export default function Home({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Doctor Fees (Rs.)
+                Total Cash Collected (Rs.) <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
-                placeholder="Enter doctor fees"
-                value={currentRecord.doctorFees}
-                onChange={(e) => setCurrentRecord({ ...currentRecord, doctorFees: e.target.value })}
+                placeholder="Enter total cash collected"
+                value={currentRecord.totalCashCollected}
+                onChange={(e) => setCurrentRecord({ ...currentRecord, totalCashCollected: e.target.value })}
                 className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-indigo-500"
               />
             </div>
@@ -321,6 +383,31 @@ export default function Home({
             />
           </div>
 
+          {/* ---- Financial Summary Box ---- */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-indigo-200 rounded-lg p-4 mb-4">
+            <h3 className="text-lg font-semibold text-indigo-800 mb-3">Financial Summary</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white rounded-lg p-3 border border-gray-200">
+                <p className="text-xs text-gray-600 mb-1">Medicine Total</p>
+                <p className="text-lg font-bold text-green-600">₨{medicineTotalAmount.toFixed(2)}</p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-gray-200">
+                <p className="text-xs text-gray-600 mb-1">Cash Collected</p>
+                <p className="text-lg font-bold text-blue-600">₨{parseFloat(currentRecord.totalCashCollected || 0).toFixed(2)}</p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-gray-200">
+                <p className="text-xs text-gray-600 mb-1">Doctor Fees (Auto)</p>
+                <p className="text-lg font-bold text-purple-600">₨{calculatedDoctorFees().toFixed(2)}</p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-indigo-300 bg-indigo-50">
+                <p className="text-xs text-indigo-700 font-medium mb-1">Balance</p>
+                <p className="text-lg font-bold text-indigo-700">
+                  ₨{(parseFloat(currentRecord.totalCashCollected || 0) - medicineTotalAmount).toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* ---- Save Button ---- */}
           <button
             onClick={saveRecord}
@@ -333,24 +420,48 @@ export default function Home({
 
         {/* ---------- Overall Summary ---------- */}
         {records.length > 0 && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-6">
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-green-800 mb-4 sm:mb-0">
+          <div className="bg-white border-2 border-indigo-200 rounded-lg p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-indigo-800 mb-4 sm:mb-0">
                 Overall Summary
               </h2>
               <button
                 onClick={() => exportRecordsToCSV(records)}
-                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2"
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
               >
                 <Download size={18} /> Export to CSV
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <SummaryCard title="Total Costs" value={`Rs. ${overallTotals.totalCosts.toFixed(2)}`} color="text-red-700" />
-              <SummaryCard title="Doctor Fees" value={`Rs. ${overallTotals.totalDoctorFees.toFixed(2)}`} color="text-blue-700" />
-              <SummaryCard title="Total Sales" value={`Rs. ${overallTotals.totalSales.toFixed(2)}`} color="text-green-700" />
-              <SummaryCard title="Total Profit" value={`Rs. ${overallTotals.totalProfit.toFixed(2)}`} color="text-emerald-700" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatsCard 
+                title="Medicine Cost"
+                value={enhancedOverallTotals.medicineCost}
+                isCurrency
+                icon={Package}
+                color="orange"
+              />
+              <StatsCard 
+                title="Medicine Profit"
+                value={enhancedOverallTotals.medicineProfit}
+                isCurrency
+                icon={TrendingUp}
+                color="emerald"
+              />
+              <StatsCard 
+                title="Doctor Fees"
+                value={enhancedOverallTotals.doctorFees}
+                isCurrency
+                icon={Calculator}
+                color="blue"
+              />
+              <StatsCard 
+                title="Total Profit"
+                value={enhancedOverallTotals.totalProfit}
+                isCurrency
+                icon={DollarSign}
+                color="purple"
+              />
             </div>
           </div>
         )}
