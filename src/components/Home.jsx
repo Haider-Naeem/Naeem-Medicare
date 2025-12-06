@@ -1,6 +1,6 @@
 // src/components/Home.jsx
 import React, { useState } from 'react';
-import { Plus, X, Calculator, Package, Download, TrendingUp, DollarSign } from 'lucide-react';
+import { Plus, X, Calculator, Package, Download, TrendingUp, DollarSign, Wallet } from 'lucide-react';
 import AddMedicineForm from './AddMedicineForm';
 import { exportToCSV as exportRecordsToCSV, calculateRecordTotals } from '../utils/calculations';
 import { addDoc, collection, doc, setDoc, getDoc } from 'firebase/firestore';
@@ -270,6 +270,12 @@ export default function Home({
             >
               <Calculator size={18} /> Daily Records
             </button>
+            <button
+              onClick={() => setCurrentPage('expense')}
+              className="bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 flex items-center gap-2"
+            >
+              <Wallet size={18} /> Expense
+            </button>
           </div>
         </div>
 
@@ -423,7 +429,7 @@ export default function Home({
           <div className="bg-white border-2 border-indigo-200 rounded-lg p-6">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-indigo-800 mb-4 sm:mb-0">
-                Overall Summary
+                Overall Summary (Medical Only)
               </h2>
               <button
                 onClick={() => exportRecordsToCSV(records)}

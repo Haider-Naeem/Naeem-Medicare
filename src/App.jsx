@@ -1,4 +1,4 @@
-// C:/Users/haide/Desktop/Naeem Medicare/src/App.jsx
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
@@ -6,6 +6,7 @@ import Home from './components/Home';
 import Inventory from './components/Inventory';
 import PatientRecords from './components/PatientRecords';
 import DailyRecords from './components/DailyRecords';
+import Expense from './components/Expense';
 import { calculateOverallTotals } from './utils/calculations';
 import { INITIAL_MEDICINES } from './utils/constants';
 
@@ -119,6 +120,9 @@ export default function MedicalRecordsApp() {
       )}
       {currentTab === 'dailyRecords' && (
         <DailyRecords records={records} setCurrentPage={setCurrentTab} />
+      )}
+      {currentTab === 'expense' && (
+        <Expense records={records} setCurrentPage={setCurrentTab} />
       )}
     </div>
   );
