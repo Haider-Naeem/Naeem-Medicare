@@ -1,6 +1,6 @@
 // src/components/Home.jsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, X, Calculator, Package, Download, TrendingUp, DollarSign, Wallet } from 'lucide-react';
+import { Plus, X, Calculator, Package, Download, TrendingUp, DollarSign, Wallet,FileText } from 'lucide-react';
 import AddMedicineForm from './AddMedicineForm';
 import { exportToCSV as exportRecordsToCSV, calculateRecordTotals } from '../utils/calculations';
 import { addDoc, collection, doc, setDoc, getDoc } from 'firebase/firestore';
@@ -338,6 +338,15 @@ export default function Home({
             >
               <Wallet size={18} /> Expense
             </button>
+
+<button
+  onClick={() => setCurrentPage('insurance')}
+  className="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 flex items-center gap-2"
+>
+  <FileText size={18} /> Insurance
+</button>
+
+
           </div>
         </div>
 

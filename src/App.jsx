@@ -7,6 +7,8 @@ import Inventory from './components/Inventory';
 import PatientRecords from './components/PatientRecords';
 import DailyRecords from './components/DailyRecords';
 import Expense from './components/Expense';
+import Insurance from './components/Insurance';
+import InsuranceBills from './components/InsuranceBills';
 import { calculateOverallTotals } from './utils/calculations';
 import { INITIAL_MEDICINES } from './utils/constants';
 
@@ -123,6 +125,12 @@ export default function MedicalRecordsApp() {
       )}
       {currentTab === 'expense' && (
         <Expense records={records} setCurrentPage={setCurrentTab} />
+      )}
+      {currentTab === 'insurance' && (
+        <Insurance records={records} setCurrentPage={setCurrentTab} />
+      )}
+      {currentTab === 'insuranceBills' && (
+        <InsuranceBills setCurrentPage={setCurrentTab} />
       )}
     </div>
   );

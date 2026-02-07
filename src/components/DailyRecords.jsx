@@ -95,35 +95,50 @@ export default function DailyRecords({ records, setCurrentPage }) {
   };
 
   // Group & total by date
-  const dailyRecords = useMemo(() => {
-    const filtered = getFilteredRecords();
-    const grouped = filtered.reduce((acc, record) => {
-      const date = record.date;
-      if (!acc[date]) {
-        acc[date] = {
-          date,
-          records: [],
-          totals: {
-            medicineSale: 0,
-            medicineCost: 0,
-            doctorFees: 0,
-            totalSale: 0,
-            profit: 0,
-          },
-        };
-      }
-      acc[date].records.push(record);
-      const recTotals = calculateRecordTotals(record);
-      acc[date].totals.medicineSale += recTotals.medicineSale;
-      acc[date].totals.medicineCost += recTotals.medicineCost;
-      acc[date].totals.doctorFees += parseFloat(record.doctorFees || 0);
-      acc[date].totals.totalSale += recTotals.totalSale;
-      acc[date].totals.profit += recTotals.profit;
-      return acc;
-    }, {});
+  // Group & total by date
+const dailyRecords = useMemo(() => {
+  const filtered = getFilteredRecords();
 
-    return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
-  }, [records, recordsFilter, customStartDate, customEndDate, dailySearch]);
+  const grouped = filtered.reduce((acc, record) => {
+    const date = record.date;
+    if (!acc[date]) {
+      acc[date] = {
+        date,
+        records: [],
+        totals: {
+          medicineSale: 0,
+          medicineCost: 0,
+          doctorFees: 0,
+          totalSale: 0,
+          profit: 0,
+        },
+      };
+    }
+    acc[date].records.push(record);
+
+    const recTotals = calculateRecordTotals(record);
+    acc[date].totals.medicineSale += recTotals.medicineSale;
+    acc[date].totals.medicineCost += recTotals.medicineCost;
+    acc[date].totals.doctorFees += parseFloat(record.doctorFees || 0);
+    acc[date].totals.totalSale += recTotals.totalSale;
+    acc[date].totals.profit += recTotals.profit;
+
+    return acc;
+  }, {});
+
+  // ───────────────────────────────────────────────────────────────
+  // SORT EACH DAY'S PATIENTS — newest (latest created) on top
+  // ───────────────────────────────────────────────────────────────
+  return Object.values(grouped)
+    .map((day) => ({
+      ...day,
+      records: [...day.records].sort((a, b) => {
+        // Newest first → larger timestamp comes before smaller one
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      }),
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date)); // Keep days newest → oldest
+}, [records, recordsFilter, customStartDate, customEndDate, dailySearch]);
 
   // Date picker handler
   const handleDateSelect = (e) => {

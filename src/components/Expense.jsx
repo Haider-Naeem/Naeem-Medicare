@@ -1,11 +1,22 @@
 // src/components/Expense.jsx
 import React, { useState, useEffect } from 'react';
 import { Plus, X, TrendingUp, DollarSign, TrendingDown, Wallet, Package, Calculator, ArrowLeft } from 'lucide-react';
-import { collection, addDoc, getDocs, doc, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, deleteDoc, setDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { calculateRecordTotals } from '../utils/calculations';
 
-// Modern StatsCard Component
+// Helper to format date nicely
+const formatDate = (isoString) => {
+  if (!isoString) return '—';
+  const date = new Date(isoString);
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }); // e.g. 25 Jan 2026
+};
+
+// Modern StatsCard Component (unchanged)
 function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purple' }) {
   const colorClasses = {
     purple: 'from-purple-600 to-indigo-600',
@@ -33,7 +44,7 @@ function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purp
         <p className="text-3xl font-bold mt-1">
           {isCurrency && '₨'}
           {isCurrency 
-            ? typeof value === 'number' ? value.toFixed(0) : value 
+            ? typeof value === 'number' ? value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : value 
             : value
           }
         </p>
@@ -53,15 +64,19 @@ export default function Expense({ setCurrentPage, records }) {
   const [expenseName, setExpenseName] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
 
-  // Load data from Firestore
+  // Load data from Firestore - newest first
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const incomesSnapshot = await getDocs(collection(db, 'otherIncomes'));
+        // Incomes - ordered by createdAt descending
+        const incomesQuery = query(collection(db, 'otherIncomes'), orderBy('createdAt', 'desc'));
+        const incomesSnapshot = await getDocs(incomesQuery);
         const incomesData = incomesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setIncomes(incomesData);
 
-        const expensesSnapshot = await getDocs(collection(db, 'expenses'));
+        // Expenses - ordered by createdAt descending
+        const expensesQuery = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
+        const expensesSnapshot = await getDocs(expensesQuery);
         const expensesData = expensesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setExpenses(expensesData);
       } catch (error) {
@@ -73,7 +88,7 @@ export default function Expense({ setCurrentPage, records }) {
     fetchData();
   }, []);
 
-  // Calculate overall totals from patient records
+  // Calculate overall totals from patient records (unchanged)
   const medicalTotals = React.useMemo(() => {
     let medicineCost = 0;
     let medicineSale = 0;
@@ -97,25 +112,14 @@ export default function Expense({ setCurrentPage, records }) {
     };
   }, [records]);
 
-  // Calculate other income total
   const totalOtherIncome = incomes.reduce((sum, income) => sum + parseFloat(income.amount || 0), 0);
-
-  // Calculate total expenses
   const totalExpenses = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount || 0), 0);
-
-  // Calculate cash in hand
   const cashInHand = medicalTotals.totalProfit + totalOtherIncome - totalExpenses;
 
   // Add Income
   const addIncome = async () => {
-    if (!incomeName.trim()) {
-      alert('Please enter income name');
-      return;
-    }
-    if (!incomeAmount || parseFloat(incomeAmount) <= 0) {
-      alert('Please enter a valid income amount');
-      return;
-    }
+    if (!incomeName.trim()) return alert('Please enter income name');
+    if (!incomeAmount || parseFloat(incomeAmount) <= 0) return alert('Please enter a valid income amount');
 
     try {
       const newIncome = {
@@ -126,9 +130,10 @@ export default function Expense({ setCurrentPage, records }) {
 
       const docRef = await addDoc(collection(db, 'otherIncomes'), newIncome);
       const incomeWithId = { ...newIncome, id: docRef.id };
-      await setDoc(doc(db, 'otherIncomes', docRef.id), { id: docRef.id }, { merge: true });
 
-      setIncomes(prev => [...prev, incomeWithId]);
+      // Add to local state (at the beginning since we sort descending)
+      setIncomes(prev => [incomeWithId, ...prev]);
+
       setIncomeName('');
       setIncomeAmount('');
       alert('Income added successfully!');
@@ -154,14 +159,8 @@ export default function Expense({ setCurrentPage, records }) {
 
   // Add Expense
   const addExpense = async () => {
-    if (!expenseName.trim()) {
-      alert('Please enter expense name');
-      return;
-    }
-    if (!expenseAmount || parseFloat(expenseAmount) <= 0) {
-      alert('Please enter a valid expense amount');
-      return;
-    }
+    if (!expenseName.trim()) return alert('Please enter expense name');
+    if (!expenseAmount || parseFloat(expenseAmount) <= 0) return alert('Please enter a valid expense amount');
 
     try {
       const newExpense = {
@@ -172,9 +171,10 @@ export default function Expense({ setCurrentPage, records }) {
 
       const docRef = await addDoc(collection(db, 'expenses'), newExpense);
       const expenseWithId = { ...newExpense, id: docRef.id };
-      await setDoc(doc(db, 'expenses', docRef.id), { id: docRef.id }, { merge: true });
 
-      setExpenses(prev => [...prev, expenseWithId]);
+      // Add to local state (at the beginning)
+      setExpenses(prev => [expenseWithId, ...prev]);
+
       setExpenseName('');
       setExpenseAmount('');
       alert('Expense added successfully!');
@@ -277,7 +277,7 @@ export default function Expense({ setCurrentPage, records }) {
               </label>
               <input
                 type="text"
-                placeholder="e.g., Consultation Fee, Service"
+                placeholder="e.g., Consultation Fee, Jazz Load, Service"
                 value={incomeName}
                 onChange={(e) => setIncomeName(e.target.value)}
                 className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-green-500"
@@ -289,6 +289,7 @@ export default function Expense({ setCurrentPage, records }) {
               </label>
               <input
                 type="number"
+                step="0.01"
                 placeholder="Enter amount"
                 value={incomeAmount}
                 onChange={(e) => setIncomeAmount(e.target.value)}
@@ -305,32 +306,34 @@ export default function Expense({ setCurrentPage, records }) {
             </div>
           </div>
 
-          {/* Income List */}
+          {/* Income List - newest first */}
           {incomes.length > 0 && (
-            <div className="mt-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Income History</h3>
-              <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">Income History</h3>
+              <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
                 <table className="w-full">
-                  <thead className="bg-green-100">
+                  <thead className="bg-green-50">
                     <tr>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Name</th>
-                      <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Amount</th>
-                      <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">Action</th>
+                      <th className="px-5 py-3 text-left text-sm font-semibold text-gray-700">Date</th>
+                      <th className="px-5 py-3 text-left text-sm font-semibold text-gray-700">Name</th>
+                      <th className="px-5 py-3 text-right text-sm font-semibold text-gray-700">Amount</th>
+                      <th className="px-5 py-3 text-center text-sm font-semibold text-gray-700">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {incomes.map((income) => (
                       <tr key={income.id} className="border-t hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm">{income.name}</td>
-                        <td className="px-4 py-2 text-sm text-right font-semibold text-green-600">
-                          ₨{parseFloat(income.amount).toFixed(2)}
+                        <td className="px-5 py-3 text-sm text-gray-600">{formatDate(income.createdAt)}</td>
+                        <td className="px-5 py-3 text-sm font-medium">{income.name}</td>
+                        <td className="px-5 py-3 text-sm text-right font-semibold text-green-700">
+                          ₨{parseFloat(income.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-2 text-center">
+                        <td className="px-5 py-3 text-center">
                           <button
                             onClick={() => deleteIncome(income.id)}
-                            className="text-red-600 hover:text-red-800"
+                            className="text-red-600 hover:text-red-800 transition-colors"
                           >
-                            <X size={18} />
+                            <X size={20} />
                           </button>
                         </td>
                       </tr>
@@ -352,7 +355,7 @@ export default function Expense({ setCurrentPage, records }) {
               </label>
               <input
                 type="text"
-                placeholder="e.g., Rent, Utilities, Salary"
+                placeholder="e.g., Rent, Utilities, Jazz Load, Salary"
                 value={expenseName}
                 onChange={(e) => setExpenseName(e.target.value)}
                 className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-red-500"
@@ -364,6 +367,7 @@ export default function Expense({ setCurrentPage, records }) {
               </label>
               <input
                 type="number"
+                step="0.01"
                 placeholder="Enter amount"
                 value={expenseAmount}
                 onChange={(e) => setExpenseAmount(e.target.value)}
@@ -380,32 +384,34 @@ export default function Expense({ setCurrentPage, records }) {
             </div>
           </div>
 
-          {/* Expense List */}
+          {/* Expense List - newest first */}
           {expenses.length > 0 && (
-            <div className="mt-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Expense History</h3>
-              <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">Expense History</h3>
+              <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
                 <table className="w-full">
-                  <thead className="bg-red-100">
+                  <thead className="bg-red-50">
                     <tr>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Name</th>
-                      <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Amount</th>
-                      <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">Action</th>
+                      <th className="px-5 py-3 text-left text-sm font-semibold text-gray-700">Date</th>
+                      <th className="px-5 py-3 text-left text-sm font-semibold text-gray-700">Name</th>
+                      <th className="px-5 py-3 text-right text-sm font-semibold text-gray-700">Amount</th>
+                      <th className="px-5 py-3 text-center text-sm font-semibold text-gray-700">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {expenses.map((expense) => (
                       <tr key={expense.id} className="border-t hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm">{expense.name}</td>
-                        <td className="px-4 py-2 text-sm text-right font-semibold text-red-600">
-                          ₨{parseFloat(expense.amount).toFixed(2)}
+                        <td className="px-5 py-3 text-sm text-gray-600">{formatDate(expense.createdAt)}</td>
+                        <td className="px-5 py-3 text-sm font-medium">{expense.name}</td>
+                        <td className="px-5 py-3 text-sm text-right font-semibold text-red-700">
+                          ₨{parseFloat(expense.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-2 text-center">
+                        <td className="px-5 py-3 text-center">
                           <button
                             onClick={() => deleteExpense(expense.id)}
-                            className="text-red-600 hover:text-red-800"
+                            className="text-red-600 hover:text-red-800 transition-colors"
                           >
-                            <X size={18} />
+                            <X size={20} />
                           </button>
                         </td>
                       </tr>
@@ -417,11 +423,10 @@ export default function Expense({ setCurrentPage, records }) {
           )}
         </div>
 
-        {/* Detailed Breakdown */}
+        {/* Detailed Breakdown (unchanged) */}
         <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-lg p-6">
           <h2 className="text-xl font-bold text-indigo-800 mb-4">Detailed Breakdown</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Medical Profit Breakdown */}
             <div className="bg-white rounded-lg p-4 shadow">
               <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
                 <Package size={20} className="text-purple-600" />
@@ -447,7 +452,6 @@ export default function Expense({ setCurrentPage, records }) {
               </div>
             </div>
 
-            {/* Final Calculation */}
             <div className="bg-white rounded-lg p-4 shadow">
               <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
                 <Calculator size={20} className="text-teal-600" />
