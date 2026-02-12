@@ -659,7 +659,7 @@ export default function InsuranceBills({ setCurrentPage }) {
                         <div className="space-y-1">
                           {bill.medicinesPrescribed.map((med, idx) => (
                             <p key={idx} className="text-sm font-semibold text-gray-700">
-                              • {med.name} - M: {med.morning || '-'}, D: {med.daily || '-'}, E:{' '}
+                              • {med.name} - M: {med.morning || '-'}, E: {med.daily || '-'}, N:{' '}
                               {med.evening || '-'} ({med.dosage || 'N/A'})
                             </p>
                           ))}
@@ -979,7 +979,7 @@ export default function InsuranceBills({ setCurrentPage }) {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-1">Daily</label>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Evening</label>
                             <input
                               type="text"
                               value={med.daily}
@@ -988,7 +988,7 @@ export default function InsuranceBills({ setCurrentPage }) {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-1">Evening</label>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Night</label>
                             <input
                               type="text"
                               value={med.evening}
