@@ -400,7 +400,7 @@ export default function Insurance({ setCurrentPage, records }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">Daily</label>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Evening</label>
                       <input
                         type="text"
                         placeholder="1"
@@ -410,7 +410,7 @@ export default function Insurance({ setCurrentPage, records }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">Evening</label>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Night</label>
                       <input
                         type="text"
                         placeholder="1"

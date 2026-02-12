@@ -341,8 +341,8 @@ export default function InsuranceBills({ setCurrentPage }) {
                   <th style="width: 35%;">Medicine Name</th>
                   <th style="width: 20%;">Dosage</th>
                   <th style="width: 15%;">Morning</th>
-                  <th style="width: 15%;">Daily</th>
                   <th style="width: 15%;">Evening</th>
+                  <th style="width: 15%;">Night</th>
                 </tr>
               </thead>
               <tbody>
