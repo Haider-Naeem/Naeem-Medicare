@@ -1,6 +1,9 @@
 // src/components/Home.jsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, X, Calculator, Package, Download, TrendingUp, DollarSign, Wallet,FileText } from 'lucide-react';
+import {
+  Plus, X, Calculator, Package, Download, TrendingUp,
+  DollarSign, Wallet, FileText, Activity, Menu, ChevronDown
+} from 'lucide-react';
 import AddMedicineForm from './AddMedicineForm';
 import { exportToCSV as exportRecordsToCSV, calculateRecordTotals } from '../utils/calculations';
 import { addDoc, collection, doc, setDoc, getDoc } from 'firebase/firestore';
@@ -14,13 +17,84 @@ const getCurrentDate = () =>
     day: '2-digit',
   });
 
-// Modern StatsCard Component
+// ── Nav items config ──────────────────────────────────────────────────────────
+const NAV_ITEMS = [
+  { key: 'inventory',      label: 'Inventory',       icon: Package,    color: 'bg-purple-600 hover:bg-purple-700' },
+  { key: 'patientRecords', label: 'Patient Records',  icon: Calculator, color: 'bg-blue-600 hover:bg-blue-700' },
+  { key: 'dailyRecords',   label: 'Daily Records',    icon: Calculator, color: 'bg-green-600 hover:bg-green-700' },
+  { key: 'expense',        label: 'Expense',          icon: Wallet,     color: 'bg-orange-600 hover:bg-orange-700' },
+  { key: 'insurance',      label: 'Insurance',        icon: FileText,   color: 'bg-teal-600 hover:bg-teal-700' },
+  { key: 'tbPatients',     label: 'TB Patients',      icon: Activity,   color: 'bg-rose-600 hover:bg-rose-700' },
+];
+
+// ── Navigation Component ──────────────────────────────────────────────────────
+function Navigation({ setCurrentPage }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close when clicking outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleNav = (key) => {
+    setCurrentPage(key);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative" ref={menuRef}>
+      {/* Toggle Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold shadow transition-all"
+      >
+        <Menu size={18} />
+        <span className="hidden sm:inline"></span>
+        <ChevronDown
+          size={16}
+          className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
+          <div className="p-1.5">
+            {NAV_ITEMS.map(({ key, label, icon: Icon, color }) => (
+              <button
+                key={key}
+                onClick={() => handleNav(key)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left group"
+              >
+                <span className={`${color.split(' ')[0]} p-1.5 rounded-lg`}>
+                  <Icon size={14} className="text-white" />
+                </span>
+                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                  {label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── StatsCard ─────────────────────────────────────────────────────────────────
 function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purple' }) {
   const colorClasses = {
-    purple: 'from-purple-600 to-indigo-600',
-    blue: 'from-blue-600 to-cyan-600',
-    green: 'from-green-600 to-emerald-600',
-    orange: 'from-orange-600 to-red-600',
+    purple:  'from-purple-600 to-indigo-600',
+    blue:    'from-blue-600 to-cyan-600',
+    green:   'from-green-600 to-emerald-600',
+    orange:  'from-orange-600 to-red-600',
     emerald: 'from-emerald-600 to-teal-600',
   };
 
@@ -32,7 +106,6 @@ function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purp
         <div className="absolute -right-4 -top-4 w-20 h-20 bg-white rounded-full" />
         <div className="absolute -left-2 -bottom-2 w-16 h-16 bg-white rounded-full" />
       </div>
-
       <div className="relative z-10">
         <div className="flex justify-between items-start mb-2">
           <p className="text-white/80 text-sm font-medium">{title}</p>
@@ -41,9 +114,7 @@ function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purp
         <p className="text-3xl font-bold mt-1">
           {isCurrency && '₨'}
           {isCurrency
-            ? typeof value === 'number'
-              ? value.toFixed(0)
-              : value
+            ? typeof value === 'number' ? value.toFixed(0) : value
             : value}
         </p>
       </div>
@@ -51,6 +122,7 @@ function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purp
   );
 }
 
+// ── Home ──────────────────────────────────────────────────────────────────────
 export default function Home({
   setCurrentPage,
   inventory,
@@ -77,11 +149,9 @@ export default function Home({
 
   const patientSuggestions = useMemo(() => {
     const nameMap = new Map();
-
     records.forEach((record) => {
       const name = record.patientName?.trim();
       if (!name) return;
-
       if (!nameMap.has(name)) {
         nameMap.set(name, { count: 1, lastVisit: record.date });
       } else {
@@ -95,7 +165,6 @@ export default function Home({
         });
       }
     });
-
     return Array.from(nameMap.entries())
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
@@ -106,31 +175,24 @@ export default function Home({
   const handlePatientNameChange = (e) => {
     const value = e.target.value;
     setCurrentRecord((prev) => ({ ...prev, patientName: value }));
-
     if (value.trim() === '') {
       setFilteredSuggestions([]);
       setShowSuggestions(false);
       return;
     }
-
     const filtered = patientSuggestions.filter((item) =>
       item.name.toLowerCase().includes(value.toLowerCase())
     );
-
     setFilteredSuggestions(filtered);
     setShowSuggestions(true);
   };
 
   const selectPatient = (name) => {
-    setCurrentRecord((prev) => ({
-      ...prev,
-      patientName: name,
-    }));
+    setCurrentRecord((prev) => ({ ...prev, patientName: name }));
     setShowSuggestions(false);
     setFilteredSuggestions([]);
   };
 
-  // Close suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (inputRef.current && !inputRef.current.contains(event.target)) {
@@ -170,10 +232,7 @@ export default function Home({
 
   useEffect(() => {
     const fees = calculatedDoctorFees();
-    setCurrentRecord((prev) => ({
-      ...prev,
-      doctorFees: fees.toFixed(2),
-    }));
+    setCurrentRecord((prev) => ({ ...prev, doctorFees: fees.toFixed(2) }));
   }, [currentRecord.totalCashCollected, medicineTotalAmount]);
 
   const saveRecord = async () => {
@@ -187,27 +246,20 @@ export default function Home({
 
       if (isNaN(doctorFees)) return alert('Enter a valid doctor fee.');
       if (isNaN(cashCollected)) return alert('Enter valid cash collected amount.');
-
       if (currentRecord.medicines.length === 0 && doctorFees === 0)
         return alert('Add at least one medicine or non-zero doctor fees.');
-
       if (cashCollected < medicineTotalAmount) {
         return alert(
-          `Cash collected (Rs. ${cashCollected.toFixed(
-            2
-          )}) is less than medicine total (Rs. ${medicineTotalAmount.toFixed(2)})`
+          `Cash collected (Rs. ${cashCollected.toFixed(2)}) is less than medicine total (Rs. ${medicineTotalAmount.toFixed(2)})`
         );
       }
 
-      // Stock validation
       for (const med of currentRecord.medicines) {
         const invMed = inventory.find((m) => m.id === med.medicineId);
         if (!invMed) return alert(`Medicine not found in inventory.`);
-
         const totalUsed = currentRecord.medicines
           .filter((m) => m.medicineId === med.medicineId)
           .reduce((sum, m) => sum + m.quantity, 0);
-
         if (invMed.totalUnits < totalUsed) {
           return alert(
             `Not enough stock for ${invMed.name}. Available: ${invMed.totalUnits}, Required: ${totalUsed}`
@@ -227,12 +279,10 @@ export default function Home({
 
       const updatedInventory = [...inventory];
       const medicineUpdates = new Map();
-
       for (const med of newRecord.medicines) {
         const current = medicineUpdates.get(med.medicineId) || 0;
         medicineUpdates.set(med.medicineId, current + med.quantity);
       }
-
       for (const [medicineId, totalQty] of medicineUpdates) {
         const idx = updatedInventory.findIndex((m) => m.id === medicineId);
         if (idx !== -1) {
@@ -251,34 +301,24 @@ export default function Home({
         const medRef = doc(db, 'medicines', medicineId);
         const snap = await getDoc(medRef);
         if (!snap.exists()) return;
-
         const fresh = snap.data();
         const unitsPerPack = fresh.unitsPerPack || 1;
         const updatedMed = updatedInventory.find((m) => m.id === medicineId);
         if (!updatedMed) return;
-
-        return setDoc(
-          medRef,
-          {
-            totalUnits: updatedMed.totalUnits,
-            totalPacks: Math.floor(updatedMed.totalUnits / unitsPerPack),
-            stockStatus: updatedMed.totalUnits > 0 ? 'In Stock' : 'Out of Stock',
-          },
-          { merge: true }
-        );
+        return setDoc(medRef, {
+          totalUnits: updatedMed.totalUnits,
+          totalPacks: Math.floor(updatedMed.totalUnits / unitsPerPack),
+          stockStatus: updatedMed.totalUnits > 0 ? 'In Stock' : 'Out of Stock',
+        }, { merge: true });
       });
-
       await Promise.all(batchWrites);
 
       setRecords((prev) => [...prev, recordWithId]);
       setInventory(updatedInventory);
 
       alert(
-        `Record saved!\nMedicine Total: Rs. ${medicineTotalAmount.toFixed(
-          2
-        )}\nDoctor Fees: Rs. ${doctorFees.toFixed(2)}\nTotal Cash Collected: Rs. ${cashCollected.toFixed(2)}`
+        `Record saved!\nMedicine Total: Rs. ${medicineTotalAmount.toFixed(2)}\nDoctor Fees: Rs. ${doctorFees.toFixed(2)}\nTotal Cash Collected: Rs. ${cashCollected.toFixed(2)}`
       );
-
       resetForm();
     } catch (error) {
       console.error('Error saving record:', error);
@@ -290,17 +330,14 @@ export default function Home({
     let medicineCost = 0;
     let medicineSale = 0;
     let doctorFees = 0;
-
     records.forEach((record) => {
       const totals = calculateRecordTotals(record);
       medicineCost += totals.medicineCost || 0;
       medicineSale += totals.medicineSale || 0;
       doctorFees += parseFloat(record.doctorFees || 0);
     });
-
     const medicineProfit = medicineSale - medicineCost;
     const totalProfit = medicineProfit + doctorFees;
-
     return { medicineCost, medicineProfit, doctorFees, totalProfit };
   }, [records]);
 
@@ -308,46 +345,12 @@ export default function Home({
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-lg p-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-pink-600 bg-clip-text text-transparent">
             Naeem Medicare
           </h1>
-
-          <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0">
-            <button
-              onClick={() => setCurrentPage('inventory')}
-              className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 flex items-center gap-2"
-            >
-              <Package size={18} /> Inventory
-            </button>
-            <button
-              onClick={() => setCurrentPage('patientRecords')}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2"
-            >
-              <Calculator size={18} /> Patient Records
-            </button>
-            <button
-              onClick={() => setCurrentPage('dailyRecords')}
-              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2"
-            >
-              <Calculator size={18} /> Daily Records
-            </button>
-            <button
-              onClick={() => setCurrentPage('expense')}
-              className="bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 flex items-center gap-2"
-            >
-              <Wallet size={18} /> Expense
-            </button>
-
-<button
-  onClick={() => setCurrentPage('insurance')}
-  className="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 flex items-center gap-2"
->
-  <FileText size={18} /> Insurance
-</button>
-
-
-          </div>
+          {/* ── Dropdown navigation ── */}
+          <Navigation setCurrentPage={setCurrentPage} />
         </div>
 
         {/* New Patient Record Form */}
@@ -376,14 +379,10 @@ export default function Home({
                 value={currentRecord.patientName}
                 onChange={handlePatientNameChange}
                 onFocus={() => {
-                  if (patientSuggestions.length > 0) {
-                    setShowSuggestions(true);
-                  }
+                  if (patientSuggestions.length > 0) setShowSuggestions(true);
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               />
-
-              {/* Suggestions Dropdown */}
               {showSuggestions && (
                 <ul className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-xl max-h-64 overflow-y-auto divide-y divide-gray-100">
                   {filteredSuggestions.length > 0 ? (
@@ -548,10 +547,10 @@ export default function Home({
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatsCard title="Medicine Cost" value={enhancedOverallTotals.medicineCost} isCurrency icon={Package} color="orange" />
-              <StatsCard title="Medicine Profit" value={enhancedOverallTotals.medicineProfit} isCurrency icon={TrendingUp} color="emerald" />
-              <StatsCard title="Doctor Fees" value={enhancedOverallTotals.doctorFees} isCurrency icon={Calculator} color="blue" />
-              <StatsCard title="Total Profit" value={enhancedOverallTotals.totalProfit} isCurrency icon={DollarSign} color="purple" />
+              <StatsCard title="Medicine Cost"    value={enhancedOverallTotals.medicineCost}    isCurrency icon={Package}    color="orange" />
+              <StatsCard title="Medicine Profit"  value={enhancedOverallTotals.medicineProfit}  isCurrency icon={TrendingUp} color="emerald" />
+              <StatsCard title="Doctor Fees"      value={enhancedOverallTotals.doctorFees}      isCurrency icon={Calculator} color="blue" />
+              <StatsCard title="Total Profit"     value={enhancedOverallTotals.totalProfit}     isCurrency icon={DollarSign} color="purple" />
             </div>
           </div>
         )}

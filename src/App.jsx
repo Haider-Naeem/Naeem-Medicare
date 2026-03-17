@@ -9,6 +9,7 @@ import DailyRecords from './components/DailyRecords';
 import Expense from './components/Expense';
 import Insurance from './components/Insurance';
 import InsuranceBills from './components/InsuranceBills';
+import TBPatients from './components/TBPatients';
 import { calculateOverallTotals } from './utils/calculations';
 import { INITIAL_MEDICINES } from './utils/constants';
 
@@ -57,15 +58,14 @@ export default function MedicalRecordsApp() {
     if (window.confirm('Are you sure you want to clear all data? This will delete all inventory and patient records.')) {
       try {
         const recordsSnapshot = await getDocs(collection(db, 'patientRecords'));
-        const recordDeletes = recordsSnapshot.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(recordDeletes);
+        await Promise.all(recordsSnapshot.docs.map(doc => deleteDoc(doc.ref)));
 
         const inventorySnapshot = await getDocs(collection(db, 'medicines'));
-        const inventoryDeletes = inventorySnapshot.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(inventoryDeletes);
+        await Promise.all(inventorySnapshot.docs.map(doc => deleteDoc(doc.ref)));
 
-        const inventorySets = INITIAL_MEDICINES.map(med => setDoc(doc(db, 'medicines', med.id.toString()), med));
-        await Promise.all(inventorySets);
+        await Promise.all(INITIAL_MEDICINES.map(med =>
+          setDoc(doc(db, 'medicines', med.id.toString()), med)
+        ));
 
         setInventory(INITIAL_MEDICINES);
         setRecords([]);
@@ -131,6 +131,9 @@ export default function MedicalRecordsApp() {
       )}
       {currentTab === 'insuranceBills' && (
         <InsuranceBills setCurrentPage={setCurrentTab} />
+      )}
+      {currentTab === 'tbPatients' && (
+        <TBPatients setCurrentPage={setCurrentTab} />
       )}
     </div>
   );
