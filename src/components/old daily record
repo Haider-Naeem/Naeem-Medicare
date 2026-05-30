@@ -1,6 +1,6 @@
 // src/components/DailyRecords.jsx
 import React, { useState, useMemo } from 'react';
-import { Calculator, Home, Download, Search, Calendar, TrendingUp, DollarSign, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calculator, Home, Download, Search, Calendar, TrendingUp, DollarSign, Trash2 } from 'lucide-react';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { calculateRecordTotals, exportToCSV } from '../utils/calculations';
@@ -17,11 +17,13 @@ function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purp
 
   return (
     <div className={`bg-gradient-to-r ${colorClasses[color]} rounded-xl shadow-lg p-4 text-white transition-all relative overflow-hidden`}>
+      {/* Background Pattern */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute -right-4 -top-4 w-20 h-20 bg-white rounded-full"></div>
         <div className="absolute -left-2 -bottom-2 w-16 h-16 bg-white rounded-full"></div>
       </div>
 
+      {/* Content */}
       <div className="relative z-10">
         <div className="flex justify-between items-start mb-2">
           <p className="text-white/80 text-sm font-medium">{title}</p>
@@ -40,16 +42,12 @@ function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purp
   );
 }
 
-export default function DailyRecords({ records, setCurrentPage: onSetCurrentPage }) {
+export default function DailyRecords({ records, setCurrentPage }) {
   const [recordsFilter, setRecordsFilter] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [dailySearch, setDailySearch] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
-  
-  // Pagination states
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5; // Number of days per page
 
   // Today's date (YYYY-MM-DD format)
   const today = useMemo(() => {
@@ -66,6 +64,7 @@ export default function DailyRecords({ records, setCurrentPage: onSetCurrentPage
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     let filtered = records.filter(record => {
+      // Parse record date (YYYY-MM-DD)
       const recordDateParts = record.date.split('-');
       const recordDate = new Date(recordDateParts[0], recordDateParts[1] - 1, recordDateParts[2]);
       
@@ -87,6 +86,7 @@ export default function DailyRecords({ records, setCurrentPage: onSetCurrentPage
       }
     });
 
+    // Apply search filter
     if (dailySearch) {
       filtered = filtered.filter(record => record.date.includes(dailySearch));
     }
@@ -95,61 +95,59 @@ export default function DailyRecords({ records, setCurrentPage: onSetCurrentPage
   };
 
   // Group & total by date
-  const dailyRecords = useMemo(() => {
-    const filtered = getFilteredRecords();
+  // Group & total by date
+const dailyRecords = useMemo(() => {
+  const filtered = getFilteredRecords();
 
-    const grouped = filtered.reduce((acc, record) => {
-      const date = record.date;
-      if (!acc[date]) {
-        acc[date] = {
-          date,
-          records: [],
-          totals: {
-            medicineSale: 0,
-            medicineCost: 0,
-            doctorFees: 0,
-            totalSale: 0,
-            profit: 0,
-          },
-        };
-      }
-      acc[date].records.push(record);
+  const grouped = filtered.reduce((acc, record) => {
+    const date = record.date;
+    if (!acc[date]) {
+      acc[date] = {
+        date,
+        records: [],
+        totals: {
+          medicineSale: 0,
+          medicineCost: 0,
+          doctorFees: 0,
+          totalSale: 0,
+          profit: 0,
+        },
+      };
+    }
+    acc[date].records.push(record);
 
-      const recTotals = calculateRecordTotals(record);
-      acc[date].totals.medicineSale += recTotals.medicineSale;
-      acc[date].totals.medicineCost += recTotals.medicineCost;
-      acc[date].totals.doctorFees += parseFloat(record.doctorFees || 0);
-      acc[date].totals.totalSale += recTotals.totalSale;
-      acc[date].totals.profit += recTotals.profit;
+    const recTotals = calculateRecordTotals(record);
+    acc[date].totals.medicineSale += recTotals.medicineSale;
+    acc[date].totals.medicineCost += recTotals.medicineCost;
+    acc[date].totals.doctorFees += parseFloat(record.doctorFees || 0);
+    acc[date].totals.totalSale += recTotals.totalSale;
+    acc[date].totals.profit += recTotals.profit;
 
-      return acc;
-    }, {});
+    return acc;
+  }, {});
 
-    return Object.values(grouped)
-      .map((day) => ({
-        ...day,
-        records: [...day.records].sort((a, b) => {
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        }),
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [records, recordsFilter, customStartDate, customEndDate, dailySearch]);
+  // ───────────────────────────────────────────────────────────────
+  // SORT EACH DAY'S PATIENTS — newest (latest created) on top
+  // ───────────────────────────────────────────────────────────────
+  return Object.values(grouped)
+    .map((day) => ({
+      ...day,
+      records: [...day.records].sort((a, b) => {
+        // Newest first → larger timestamp comes before smaller one
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      }),
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date)); // Keep days newest → oldest
+}, [records, recordsFilter, customStartDate, customEndDate, dailySearch]);
 
-  // Pagination logic
-  const paginatedDailyRecords = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    const end = start + itemsPerPage;
-    return dailyRecords.slice(start, end);
-  }, [dailyRecords, currentPage]);
+  // Date picker handler
+  const handleDateSelect = (e) => {
+    const selected = e.target.value;
+    setDailySearch(selected);
+    setShowCalendar(false);
+  };
 
-  const totalPages = Math.ceil(dailyRecords.length / itemsPerPage);
-
-  // Reset to first page when filters change
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [recordsFilter, customStartDate, customEndDate, dailySearch]);
-
-  // Calculate overall stats (for all records, not just current page)
+  // Calculate overall stats
   const overallStats = useMemo(() => {
     return dailyRecords.reduce((acc, day) => {
       const medicineProfit = day.totals.medicineSale - day.totals.medicineCost;
@@ -227,6 +225,7 @@ Type 'DELETE' to confirm:`;
     }
 
     try {
+      // Assuming records have an 'id' field for Firestore document ID
       for (const record of filtered) {
         if (record.id) {
           await deleteDoc(doc(db, 'dailyRecords', record.id));
@@ -263,7 +262,7 @@ Type 'DELETE' to confirm:`;
 
             <div className="flex gap-3 w-full sm:w-auto">
               <button
-                onClick={() => onSetCurrentPage('home')}
+                onClick={() => setCurrentPage('home')}
                 className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
               >
                 <Home size={18} /> Home
@@ -363,7 +362,7 @@ Type 'DELETE' to confirm:`;
           </div>
 
           {/* Search Bar */}
-          <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="flex items-center gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <input
@@ -389,10 +388,7 @@ Type 'DELETE' to confirm:`;
               <input
                 type="date"
                 value={dailySearch}
-                onChange={(e) => {
-                  setDailySearch(e.target.value);
-                  setShowCalendar(false);
-                }}
+                onChange={handleDateSelect}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-green-500 outline-none font-medium"
               />
             </div>
@@ -407,70 +403,10 @@ Type 'DELETE' to confirm:`;
           )}
         </div>
 
-        {/* Pagination Info Bar */}
-        {dailyRecords.length > 0 && (
-          <div className="bg-white rounded-xl shadow-md border-2 border-green-200 p-4 mb-4 flex flex-col sm:flex-row justify-between items-center gap-3">
-            <div className="text-sm text-gray-600">
-              Showing <span className="font-bold text-green-700">{((currentPage - 1) * itemsPerPage) + 1}</span> to{' '}
-              <span className="font-bold text-green-700">
-                {Math.min(currentPage * itemsPerPage, dailyRecords.length)}
-              </span>{' '}
-              of <span className="font-bold text-green-700">{dailyRecords.length}</span> days
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 transition-all flex items-center gap-2 font-medium"
-              >
-                <ChevronLeft size={18} /> Previous
-              </button>
-              <div className="flex gap-1">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
-                  }
-                  
-                  if (pageNum > 0 && pageNum <= totalPages) {
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`w-10 h-10 rounded-lg font-semibold transition-all ${
-                          currentPage === pageNum
-                            ? 'bg-green-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  }
-                  return null;
-                })}
-              </div>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 transition-all flex items-center gap-2 font-medium"
-              >
-                Next <ChevronRight size={18} />
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Daily Records */}
         <div className="space-y-4">
-          {paginatedDailyRecords.length > 0 ? (
-            paginatedDailyRecords.map((daily) => (
+          {dailyRecords.length > 0 ? (
+            dailyRecords.map((daily) => (
               <div 
                 key={daily.date} 
                 className="bg-white border-2 border-green-200 rounded-2xl p-6 shadow-md hover:shadow-xl transition-all"
