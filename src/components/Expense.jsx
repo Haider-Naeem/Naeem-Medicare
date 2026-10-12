@@ -1,9 +1,9 @@
 // src/components/Expense.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { 
-  Plus, X, TrendingUp, DollarSign, TrendingDown, Wallet, 
-  Package, Calculator, ArrowLeft, Edit2, Filter, ChevronLeft, 
-  ChevronRight, Calendar, Save 
+import {
+  Plus, X, TrendingUp, DollarSign, TrendingDown, Wallet,
+  Package, Calculator, ArrowLeft, Edit2, Filter, ChevronLeft,
+  ChevronRight, Calendar, Save
 } from 'lucide-react';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, where, limit, startAfter, getCountFromServer } from 'firebase/firestore';
 import { db } from '../utils/firebase';
@@ -57,8 +57,8 @@ function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purp
         </div>
         <p className="text-xl sm:text-3xl font-bold mt-1">
           {isCurrency && '₨'}
-          {isCurrency 
-            ? typeof value === 'number' ? value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : value 
+          {isCurrency
+            ? typeof value === 'number' ? value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : value
             : value
           }
         </p>
@@ -91,7 +91,7 @@ function EditModal({ isOpen, onClose, item, type, onSave }) {
     if (!name.trim()) return alert('Please enter name');
     if (!amount || parseFloat(amount) <= 0) return alert('Please enter valid amount');
     if (!date) return alert('Please select date');
-    
+
     onSave({
       name: name.trim(),
       amount: parseFloat(amount).toFixed(2),
@@ -177,7 +177,7 @@ export default function Expense({ setCurrentPage, records }) {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('all'); // 'today', 'week', 'month', 'all'
-  
+
   // Pagination states
   const [incomePage, setIncomePage] = useState(1);
   const [expensePage, setExpensePage] = useState(1);
@@ -322,7 +322,7 @@ export default function Expense({ setCurrentPage, records }) {
   const editIncome = async (id, updatedData) => {
     try {
       await updateDoc(doc(db, 'otherIncomes', id), updatedData);
-      setAllIncomes(prev => prev.map(income => 
+      setAllIncomes(prev => prev.map(income =>
         income.id === id ? { ...income, ...updatedData } : income
       ));
       alert('Income updated successfully!');
@@ -377,7 +377,7 @@ export default function Expense({ setCurrentPage, records }) {
   const editExpense = async (id, updatedData) => {
     try {
       await updateDoc(doc(db, 'expenses', id), updatedData);
-      setAllExpenses(prev => prev.map(expense => 
+      setAllExpenses(prev => prev.map(expense =>
         expense.id === id ? { ...expense, ...updatedData } : expense
       ));
       alert('Expense updated successfully!');
@@ -393,11 +393,10 @@ export default function Expense({ setCurrentPage, records }) {
   const FilterButton = ({ type, label }) => (
     <button
       onClick={() => setFilterType(type)}
-      className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
-        filterType === type
+      className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${filterType === type
           ? 'bg-indigo-600 text-white shadow-md'
           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-      }`}
+        }`}
     >
       {label}
     </button>
@@ -444,13 +443,13 @@ export default function Expense({ setCurrentPage, records }) {
               <FilterButton type="all" label="All Time" />
             </div>
           </div>
-          
+
           {/* Filter info */}
           <div className="text-xs sm:text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-            Showing: {filterType === 'today' ? "Today's records" : 
-                       filterType === 'week' ? "Last 7 days records" :
-                       filterType === 'month' ? "Last 30 days records" :
-                       "All time records"}
+            Showing: {filterType === 'today' ? "Today's records" :
+              filterType === 'week' ? "Last 7 days records" :
+                filterType === 'month' ? "Last 30 days records" :
+                  "All time records"}
             {filterType !== 'all' && (
               <span className="ml-2 font-semibold text-indigo-600">
                 ({incomes.length + expenses.length} entries)
@@ -463,35 +462,35 @@ export default function Expense({ setCurrentPage, records }) {
         <div className="mb-8">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4">Financial Overview</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-            <StatsCard 
+            <StatsCard
               title="Total Profit (Medical)"
               value={medicalTotals.totalProfit}
               isCurrency
               icon={TrendingUp}
               color="purple"
             />
-            <StatsCard 
+            <StatsCard
               title="Other Income"
               value={totalOtherIncome}
               isCurrency
               icon={DollarSign}
               color="emerald"
             />
-            <StatsCard 
+            <StatsCard
               title="Total Revenue"
               value={medicalTotals.totalProfit + totalOtherIncome}
               isCurrency
               icon={TrendingUp}
               color="blue"
             />
-            <StatsCard 
+            <StatsCard
               title="Total Expenses"
               value={totalExpenses}
               isCurrency
               icon={TrendingDown}
               color="red"
             />
-            <StatsCard 
+            <StatsCard
               title="Cash in Hand"
               value={cashInHand}
               isCurrency

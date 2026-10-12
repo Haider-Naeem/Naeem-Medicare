@@ -10,6 +10,8 @@ import Expense from './components/Expense';
 import Insurance from './components/Insurance';
 import InsuranceBills from './components/InsuranceBills';
 import TBPatients from './components/TBPatients';
+import Financials from './components/Financials';
+import Billing from './components/Billing';
 import { calculateOverallTotals } from './utils/calculations';
 import { INITIAL_MEDICINES } from './utils/constants';
 
@@ -134,6 +136,20 @@ export default function MedicalRecordsApp() {
       )}
       {currentTab === 'tbPatients' && (
         <TBPatients setCurrentPage={setCurrentTab} />
+      )}
+      {currentTab === 'financials' && (
+        <Financials
+          setCurrentPage={setCurrentTab}
+          records={records}
+          inventory={inventory}
+        />
+      )}
+      {currentTab === 'billing' && (
+        <Billing
+          setCurrentPage={setCurrentTab}
+          records={records}
+          inventory={inventory}
+        />
       )}
     </div>
   );

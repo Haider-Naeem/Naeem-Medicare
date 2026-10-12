@@ -66,9 +66,9 @@ export default function Inventory({
   const calculateInventoryTotals = (inv) => {
     let totalPurchase = 0;
     let totalRetail = 0;
-    inv.forEach((med) => {
+    inv.filter((m) => !m.isDeleted).forEach((med) => {
       totalPurchase += (med.purchasePerUnit || 0) * (med.totalUnits || 0);
-      totalRetail   += (med.retailPerUnit   || 0) * (med.totalUnits || 0);
+      totalRetail += (med.retailPerUnit || 0) * (med.totalUnits || 0);
     });
     return { totalPurchase, totalRetail };
   };
@@ -76,11 +76,11 @@ export default function Inventory({
 
   const exportInventoryToCSV = (inv) => {
     const headers = [
-      'Medicine Name','Strength','Type','Pack Purchase Rate',
-      'Pack Retail Rate','Units Per Pack','Total Packs',
-      'Total Units','Purchase Per Unit','Retail Per Unit',
+      'Medicine Name', 'Strength', 'Type', 'Pack Purchase Rate',
+      'Pack Retail Rate', 'Units Per Pack', 'Total Packs',
+      'Total Units', 'Purchase Per Unit', 'Retail Per Unit',
     ];
-    const rows = inv.map((med) => [
+    const rows = inv.filter((m) => !m.isDeleted).map((med) => [
       med.name,
       med.strength,
       med.type,
@@ -90,7 +90,7 @@ export default function Inventory({
       Math.floor(med.totalUnits / med.unitsPerPack),
       med.totalUnits,
       (med.purchasePerUnit || 0).toFixed(2),
-      (med.retailPerUnit   || 0).toFixed(2),
+      (med.retailPerUnit || 0).toFixed(2),
     ]);
 
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -113,15 +113,15 @@ export default function Inventory({
     }
 
     const purchasePerUnit = newMedicine.packPurchaseRate / newMedicine.unitsPerPack;
-    const retailPerUnit   = newMedicine.packRetailRate   / newMedicine.unitsPerPack;
+    const retailPerUnit = newMedicine.packRetailRate / newMedicine.unitsPerPack;
 
     const baseObj = {
       name: newMedicine.name,
       strength: newMedicine.strength,
       type: newMedicine.type,
       packPurchaseRate: newMedicine.packPurchaseRate,
-      packRetailRate:   newMedicine.packRetailRate,
-      unitsPerPack:     newMedicine.unitsPerPack,
+      packRetailRate: newMedicine.packRetailRate,
+      unitsPerPack: newMedicine.unitsPerPack,
       purchasePerUnit,
       retailPerUnit,
     };
@@ -233,12 +233,16 @@ export default function Inventory({
   };
 
   // -------------------------------------------------------------
-  // DELETE
+  // DELETE (SOFT DELETE)
   // -------------------------------------------------------------
   const deleteMedicine = async (id) => {
-    if (!window.confirm('Delete this medicine permanently?')) return;
+    if (!window.confirm('Are you sure you want to delete this medicine? It will be removed from inventory but kept in past patient records.')) return;
     try {
-      await deleteDoc(doc(db, 'medicines', id));
+      await setDoc(
+        doc(db, 'medicines', id),
+        { isDeleted: true, deletedAt: new Date().toISOString() },
+        { merge: true }
+      );
     } catch (e) {
       console.error(e);
       alert('Failed to delete.');
@@ -249,8 +253,8 @@ export default function Inventory({
   // FILTER + SORT
   // -------------------------------------------------------------
   const filteredAndSorted = useMemo(() => {
-    let list = propInventory.filter((m) =>
-      `${m.name} ${m.strength}`.toLowerCase().includes(inventorySearch.toLowerCase())
+    let list = propInventory.filter(
+      (m) => !m.isDeleted && `${m.name} ${m.strength}`.toLowerCase().includes(inventorySearch.toLowerCase())
     );
 
     const statusWeight = (status) => {
@@ -571,7 +575,7 @@ export default function Inventory({
                 const loose = med.totalUnits % med.unitsPerPack;
                 const status =
                   med.totalUnits > 10 ? 'In Stock' :
-                  med.totalUnits > 0 ? 'Low Stock' : 'Out of Stock';
+                    med.totalUnits > 0 ? 'Low Stock' : 'Out of Stock';
 
                 return (
                   <tr key={med.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
@@ -586,11 +590,10 @@ export default function Inventory({
                     <td className="p-3 text-right">{fullPacks}</td>
                     <td className="p-3 text-right font-semibold">{med.totalUnits}</td>
                     <td className="p-3 text-center">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        status === 'In Stock' ? 'bg-green-200 text-green-800' :
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${status === 'In Stock' ? 'bg-green-200 text-green-800' :
                         status === 'Low Stock' ? 'bg-yellow-200 text-yellow-800' :
-                        'bg-red-200 text-red-800'
-                      }`}>
+                          'bg-red-200 text-red-800'
+                        }`}>
                         {status}
                       </span>
                     </td>

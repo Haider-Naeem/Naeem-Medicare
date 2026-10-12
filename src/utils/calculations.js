@@ -1,7 +1,16 @@
 // src/utils/calculations.js
 
 export const calculateMedicineTotal = (medicine) => {
-  return (medicine.quantity ?? 0) * (medicine.finalPrice ?? 0);
+  const qty = medicine.quantity ?? 0;
+  const disc = parseFloat(medicine.discount) || 0;
+  const pRate = medicine.purchaseRate ?? 0;
+  const fPrice = medicine.finalPrice ?? 0;
+
+  // If 100% discount is given, purchase price is lost → add in sales with negative
+  if (disc >= 100 || (disc > 0 && fPrice === 0)) {
+    return -(qty * pRate);
+  }
+  return qty * fPrice;
 };
 
 export const calculateMedicineCost = (medicine) => {
@@ -18,7 +27,20 @@ export const calculateRecordTotals = (record) => {
   const doctorFees = parseFloat(record.doctorFees || '0') || 0;
   
   const totalSale = medicineSale + doctorFees;
-  const profit = totalSale - medicineCost;
+  
+  // Profit: net gain across medicines and doctor fees.
+  // If 100% discount is given, net medicine contribution is -purchaseCost.
+  const profit =
+    (record.medicines?.reduce((sum, m) => {
+      const qty = m.quantity ?? 0;
+      const pRate = m.purchaseRate ?? 0;
+      const fPrice = m.finalPrice ?? 0;
+      const disc = parseFloat(m.discount) || 0;
+      if (disc >= 100 || (disc > 0 && fPrice === 0)) {
+        return sum - (qty * pRate);
+      }
+      return sum + (qty * (fPrice - pRate));
+    }, 0) || 0) + doctorFees;
   
   return { medicineSale, medicineCost, doctorFees, totalSale, profit };
 };

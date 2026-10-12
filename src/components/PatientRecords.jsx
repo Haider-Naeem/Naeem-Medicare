@@ -1,11 +1,12 @@
 // src/components/PatientRecords.jsx
 import React, { useState, useMemo } from 'react';
-import { Calculator, Home, Download, Search, Trash2, Edit3, X, ChevronDown, ChevronRight, Calendar, User, Stethoscope, Activity } from 'lucide-react';
+import { Calculator, Home, Download, Search, Trash2, Edit3, X, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Calendar, User, Stethoscope, Activity, Printer } from 'lucide-react';
 import MedicineTable from './MedicineTable';
 import AddMedicineForm from './AddMedicineForm';
 import { calculateRecordTotals, exportToCSV } from '../utils/calculations';
 import { doc, deleteDoc, setDoc, getDoc } from "firebase/firestore";
 import { db } from "../utils/firebase";
+import ReceiptModal, { cleanMedicineNameOnly } from './ReceiptModal';
 
 export default function PatientRecords({ records, setRecords, inventory, setInventory, setCurrentPage }) {
   const [patientSearch, setPatientSearch] = useState('');
@@ -14,6 +15,70 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
   const [expandedVisits, setExpandedVisits] = useState({});
   const [currentPage, setCurrentPageState] = useState(1);
   const [itemsPerPage] = useState(5);
+
+  // Receipt Modal State (for Print Bill)
+  const [printVisitRecord, setPrintVisitRecord] = useState(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+
+  // Patient Renaming State
+  const [renamingPatient, setRenamingPatient] = useState(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  const openRenameModal = (oldName) => {
+    setRenamingPatient({ oldName, newName: oldName });
+  };
+
+  const handleSavePatientRename = async () => {
+    if (!renamingPatient) return;
+    const { oldName, newName } = renamingPatient;
+    const trimmedNew = (newName || '').trim();
+    if (!trimmedNew) {
+      alert('Please enter a valid patient name.');
+      return;
+    }
+    if (trimmedNew.toLowerCase() === oldName.trim().toLowerCase()) {
+      setRenamingPatient(null);
+      return;
+    }
+
+    setIsRenaming(true);
+    try {
+      const matchingRecords = records.filter(
+        r => r.patientName?.trim().toLowerCase() === oldName.trim().toLowerCase()
+      );
+
+      await Promise.all(
+        matchingRecords.map(r =>
+          setDoc(doc(db, "patientRecords", r.id), { patientName: trimmedNew }, { merge: true })
+        )
+      );
+
+      setRecords(prev =>
+        prev.map(r =>
+          r.patientName?.trim().toLowerCase() === oldName.trim().toLowerCase()
+            ? { ...r, patientName: trimmedNew }
+            : r
+        )
+      );
+
+      setExpandedPatients(prev => {
+        const copy = { ...prev };
+        if (copy[oldName]) {
+          delete copy[oldName];
+          copy[trimmedNew] = true;
+        }
+        return copy;
+      });
+
+      setRenamingPatient(null);
+      alert(`Patient renamed to "${trimmedNew}" successfully!`);
+    } catch (err) {
+      console.error("Rename patient error:", err);
+      alert("Failed to rename patient: " + err.message);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
   
   const [editForm, setEditForm] = useState({
     patientName: '',
@@ -204,6 +269,42 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
     }
   };
 
+  // ── Open Print Bill for Visit ──
+  const openPrintBill = (record, e) => {
+    if (e) e.stopPropagation();
+    const printItems = (record.medicines || []).map((m) => {
+      const qty = parseInt(m.quantity, 10) || 1;
+      const discPct = parseFloat(m.discount) || 0;
+      let retailRate = parseFloat(m.retailRate || m.pricePerUnit) || 0;
+      if (!retailRate && m.finalPrice) {
+        if (discPct > 0 && discPct < 100) {
+          retailRate = parseFloat(m.finalPrice) / (1 - (discPct / 100));
+        } else {
+          retailRate = parseFloat(m.finalPrice);
+        }
+      }
+      const gross = retailRate * qty;
+      const discAmt = gross * (discPct / 100);
+      const lineTotal = Math.max(0, gross - discAmt);
+      return {
+        name: cleanMedicineNameOnly(m.medicine || m.fullName || m.name),
+        quantity: qty,
+        pricePerUnit: retailRate,
+        discountPercent: discPct,
+        total: lineTotal,
+      };
+    });
+
+    setPrintVisitRecord({
+      patientName: record.patientName,
+      date: record.date,
+      items: printItems,
+      doctorFee: parseFloat(record.doctorFees || 0),
+      billDiscount: 0,
+    });
+    setShowReceiptModal(true);
+  };
+
   const processedPatients = useMemo(() => {
     let filtered = records.filter((record) => 
       record.patientName?.toLowerCase().includes(patientSearch.toLowerCase())
@@ -264,9 +365,9 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 px-2 py-3 sm:px-4 sm:py-6 pb-16 sm:pb-20">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-3 sm:p-6 pb-5 sm:pb-6">
             {/* HEADER */}
             <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
               <div className="flex items-center gap-3 mb-4 sm:mb-0">
@@ -290,7 +391,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
             </div>
 
             {/* SEARCH */}
-            <div className="mb-6">
+            <div className="mb-4">
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-gray-400" size={20} />
                 <input
@@ -303,33 +404,35 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
               </div>
             </div>
 
-            {/* Pagination Info Bar */}
+            {/* Pagination Info Bar (Compact 2 Lines) */}
             {processedPatients.length > 0 && (
-              <div className="bg-blue-50 rounded-lg p-3 mb-4 flex flex-col sm:flex-row justify-between items-center gap-2">
-                <div className="text-sm text-gray-600">
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 sm:p-3 mb-4 flex flex-col items-center justify-center gap-2">
+                <div className="text-xs sm:text-sm text-gray-600 text-center font-medium">
                   Showing <span className="font-bold text-blue-700">{((currentPage - 1) * itemsPerPage) + 1}</span> to{' '}
                   <span className="font-bold text-blue-700">
                     {Math.min(currentPage * itemsPerPage, processedPatients.length)}
                   </span>{' '}
                   of <span className="font-bold text-blue-700">{processedPatients.length}</span> patients
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                   <button
                     onClick={() => setCurrentPageState(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-1 rounded bg-gray-200 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all text-sm"
+                    className="p-1 sm:px-2.5 sm:py-1 rounded-lg bg-white border border-blue-200 text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all flex items-center justify-center text-xs font-semibold shrink-0"
+                    title="Previous Page"
                   >
-                    Previous
+                    <ChevronLeft size={15} />
                   </button>
-                  <span className="px-3 py-1 text-sm">
+                  <span className="px-3 py-1 text-xs font-bold bg-blue-100/60 rounded-lg text-blue-900 whitespace-nowrap shrink-0">
                     Page {currentPage} of {totalPages || 1}
                   </span>
                   <button
                     onClick={() => setCurrentPageState(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1 rounded bg-gray-200 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all text-sm"
+                    className="p-1 sm:px-2.5 sm:py-1 rounded-lg bg-white border border-blue-200 text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all flex items-center justify-center text-xs font-semibold shrink-0"
+                    title="Next Page"
                   >
-                    Next
+                    <ChevronRight size={15} />
                   </button>
                 </div>
               </div>
@@ -342,41 +445,55 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                   const isPatientExpanded = expandedPatients[patient.patientName];
                   
                   return (
-                    <div key={index} className="border-2 border-blue-200 rounded-lg overflow-hidden bg-white shadow-md hover:shadow-lg transition-all">
-                      {/* Patient Header - Clickable */}
-                      <button
-                        onClick={() => togglePatient(patient.patientName)}
-                        className={`w-full px-4 py-4 transition-all text-left ${
+                    <div key={index} className="border-2 border-blue-200 rounded-xl overflow-hidden bg-white shadow-md hover:shadow-lg transition-all">
+                      {/* Patient Header */}
+                      <div
+                        className={`w-full px-3 sm:px-4 py-3.5 transition-all text-left ${
                           isPatientExpanded 
                             ? 'bg-gradient-to-r from-blue-700 to-indigo-700' 
                             : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
                         }`}
                       >
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                          <div className="flex items-center gap-3">
+                          {/* Clickable Area for Accordion Toggle */}
+                          <div
+                            onClick={() => togglePatient(patient.patientName)}
+                            className="flex items-center gap-2 sm:gap-3 cursor-pointer flex-1 select-none"
+                          >
                             {isPatientExpanded ? (
-                              <ChevronDown size={22} className="text-white" />
+                              <ChevronDown size={22} className="text-white shrink-0" />
                             ) : (
-                              <ChevronRight size={22} className="text-white" />
+                              <ChevronRight size={22} className="text-white shrink-0" />
                             )}
-                            <div className="flex items-center gap-2">
-                              <User size={20} className="text-white" />
-                              <h3 className="font-bold text-lg text-white">{patient.patientName}</h3>
-                              <span className="bg-white/20 text-white px-2 py-0.5 rounded-full text-xs font-semibold">
-                                {patient.totalVisits} {patient.totalVisits === 1 ? 'Visit' : 'Visits'}
-                              </span>
-                            </div>
+                            <User size={20} className="text-white shrink-0" />
+                            <h3 className="font-bold text-base sm:text-lg text-white">{patient.patientName}</h3>
+                            <span className="bg-white/20 text-white px-2 py-0.5 rounded-full text-xs font-semibold">
+                              {patient.totalVisits} {patient.totalVisits === 1 ? 'Visit' : 'Visits'}
+                            </span>
                           </div>
-                          <div className="flex flex-wrap gap-3 text-sm">
+
+                          {/* Stats & Edit Name Button */}
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm">
                             <div className="text-white/90">
                               Latest: <span className="font-semibold">{patient.latestVisit}</span>
                             </div>
                             <div className="text-white/90">
                               Total: <span className="font-semibold">₨{patient.totalCashCollected.toFixed(0)}</span>
                             </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openRenameModal(patient.patientName);
+                              }}
+                              className="bg-white/20 hover:bg-white/30 text-white px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition active:scale-95 border border-white/30"
+                              title="Edit Patient Name"
+                            >
+                              <Edit3 size={13} /> Edit Name
+                            </button>
                           </div>
                         </div>
-                      </button>
+                      </div>
 
                       {/* Visits List - Only show if patient is expanded */}
                       {isPatientExpanded && (
@@ -427,6 +544,13 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                                           <p className="text-xs text-gray-500">Total</p>
                                         </div>
                                         <div className="flex gap-2">
+                                          <button
+                                            onClick={(e) => openPrintBill(record, e)}
+                                            className="text-emerald-600 hover:text-emerald-800 p-1.5 hover:bg-emerald-50 rounded transition-colors"
+                                            title="Print Thermal Bill (57mm)"
+                                          >
+                                            <Printer size={16} />
+                                          </button>
                                           <button
                                             onClick={(e) => openEdit(record, e)}
                                             className="text-indigo-600 hover:text-indigo-800 p-1.5 hover:bg-indigo-50 rounded transition-colors"
@@ -539,40 +663,44 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
               )}
             </div>
 
-            {/* Bottom Pagination */}
+            {/* Bottom Pagination (Single Line with Arrow Icons) */}
             {processedPatients.length > itemsPerPage && (
-              <div className="mt-6 flex justify-center">
-                <div className="flex gap-2">
+              <div className="mt-6 pt-3.5 border-t border-gray-100 flex justify-center pb-2">
+                <div className="flex items-center justify-center gap-1 sm:gap-2 flex-nowrap max-w-full overflow-x-auto no-scrollbar">
                   <button
                     onClick={() => setCurrentPageState(1)}
                     disabled={currentPage === 1}
-                    className="px-3 py-1 rounded bg-gray-200 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all"
+                    className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-xs font-semibold shrink-0"
+                    title="First Page"
                   >
-                    First
+                    <ChevronsLeft size={16} />
                   </button>
                   <button
                     onClick={() => setCurrentPageState(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-1 rounded bg-gray-200 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all"
+                    className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-xs font-semibold shrink-0"
+                    title="Previous Page"
                   >
-                    Previous
+                    <ChevronLeft size={16} />
                   </button>
-                  <span className="px-4 py-1 text-sm">
+                  <span className="px-3 py-1.5 text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 rounded-lg whitespace-nowrap shrink-0">
                     Page {currentPage} of {totalPages}
                   </span>
                   <button
                     onClick={() => setCurrentPageState(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1 rounded bg-gray-200 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all"
+                    className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-xs font-semibold shrink-0"
+                    title="Next Page"
                   >
-                    Next
+                    <ChevronRight size={16} />
                   </button>
                   <button
                     onClick={() => setCurrentPageState(totalPages)}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1 rounded bg-gray-200 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-all"
+                    className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-xs font-semibold shrink-0"
+                    title="Last Page"
                   >
-                    Last
+                    <ChevronsRight size={16} />
                   </button>
                 </div>
               </div>
@@ -675,6 +803,76 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                 className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
               >
                 Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── 57mm Thermal Receipt Modal ── */}
+      {showReceiptModal && printVisitRecord && (
+        <ReceiptModal
+          isOpen={showReceiptModal}
+          onClose={() => setShowReceiptModal(false)}
+          patientName={printVisitRecord.patientName}
+          date={printVisitRecord.date}
+          items={printVisitRecord.items}
+          doctorFee={printVisitRecord.doctorFee}
+          billDiscount={printVisitRecord.billDiscount}
+        />
+      )}
+
+      {/* ── RENAME PATIENT MODAL ── */}
+      {renamingPatient && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b">
+              <h3 className="text-lg sm:text-xl font-bold text-indigo-900 flex items-center gap-2">
+                <Edit3 size={20} className="text-indigo-600" /> Edit Patient Name
+              </h3>
+              <button
+                onClick={() => setRenamingPatient(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                Current Name: <span className="font-bold text-gray-800">{renamingPatient.oldName}</span>
+              </label>
+              <input
+                type="text"
+                value={renamingPatient.newName}
+                onChange={(e) => setRenamingPatient({ ...renamingPatient, newName: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSavePatientRename();
+                }}
+                placeholder="Enter new patient name..."
+                className="w-full px-3 py-2.5 border-2 border-indigo-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                This will update the patient name across all visit records and suggestions.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setRenamingPatient(null)}
+                disabled={isRenaming}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePatientRename}
+                disabled={isRenaming || !renamingPatient.newName?.trim()}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow transition active:scale-95 disabled:bg-gray-400"
+              >
+                {isRenaming ? 'Saving...' : 'Save Name'}
               </button>
             </div>
           </div>
