@@ -414,12 +414,12 @@ export default function Home({
         </header>
 
         {/* ── Main Layout: Fixed on Desktop, Scrolls on Mobile ── */}
-        <main className="w-full flex-1 lg:overflow-hidden pt-1 pb-36 sm:pb-48 lg:pb-3">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 h-full items-start">
+        <main className="w-full flex-1 lg:overflow-hidden pt-1 pb-16 sm:pb-20 lg:pb-3">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 sm:gap-3 lg:gap-5 h-auto lg:h-full items-start">
             {/* ════ LEFT COLUMN (8 cols): Clinical Workflow (Independent Smooth Scroll on Desktop) ════ */}
             <div
               ref={leftColRef}
-              className="lg:col-span-8 space-y-4 lg:h-full lg:overflow-y-auto lg:pr-1 pb-28 sm:pb-36 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              className="lg:col-span-8 space-y-4 lg:h-full lg:overflow-y-auto lg:pr-1 pb-0 lg:pb-28 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
               {/* 1. PATIENT REGISTRATION (Age and Gender removed per user request) */}
               <div className="bg-white rounded-2xl border-2 border-slate-200/90 border-l-4 border-l-indigo-600 shadow-sm relative">
