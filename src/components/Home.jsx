@@ -414,12 +414,12 @@ export default function Home({
         </header>
 
         {/* ── Main Layout: Fixed on Desktop, Scrolls on Mobile ── */}
-        <main className="w-full flex-1 lg:overflow-hidden pt-1 pb-36 sm:pb-48 lg:pb-3">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 h-full items-start">
+        <main className="w-full flex-1 lg:overflow-hidden pt-1 pb-4 sm:pb-6 lg:pb-3">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 lg:gap-5 h-full items-start">
             {/* ════ LEFT COLUMN (8 cols): Clinical Workflow (Independent Smooth Scroll on Desktop) ════ */}
             <div
               ref={leftColRef}
-              className="lg:col-span-8 space-y-4 lg:h-full lg:overflow-y-auto lg:pr-1 pb-28 sm:pb-36 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              className="lg:col-span-8 space-y-4 lg:h-full lg:overflow-y-auto lg:pr-1 pb-0 lg:pb-28 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
               {/* 1. PATIENT REGISTRATION (Age and Gender removed per user request) */}
               <div className="bg-white rounded-2xl border-2 border-slate-200/90 border-l-4 border-l-indigo-600 shadow-sm relative">
@@ -652,7 +652,7 @@ export default function Home({
               </div>
 
               {/* 4. MEDICINE */}
-              <div className="bg-white rounded-2xl border-2 border-slate-200/90 border-l-4 border-l-indigo-600 shadow-sm relative">
+              <div className="bg-white rounded-t-2xl rounded-b-none border-b-0 lg:rounded-b-2xl lg:border-b-2 border-2 border-slate-200/90 border-l-4 border-l-indigo-600 shadow-sm relative">
                 {/* Section Header with lighter refined gradient */}
                 <div className="bg-gradient-to-r from-slate-800 via-indigo-900 to-purple-900 text-white rounded-t-xl px-4 py-3 sm:px-5 sm:py-3.5 flex justify-between items-center">
                   <div className="flex items-center gap-2">
@@ -674,7 +674,7 @@ export default function Home({
                 </div>
 
                 {/* Integrated AddMedicineForm */}
-                <div className="p-3.5 sm:p-5 rounded-b-xl">
+                <div className="p-3.5 sm:p-5 rounded-b-none lg:rounded-b-xl">
                   <AddMedicineForm
                     inventory={inventory}
                     setInventory={setInventory}
@@ -687,7 +687,7 @@ export default function Home({
 
             {/* ════ RIGHT COLUMN (4 cols): OPD Billing & Actions (100% Static on Desktop, Zero Movement) ════ */}
             <div className="lg:col-span-4 space-y-4 self-start">
-              <div className="bg-white rounded-2xl border-2 border-slate-200/90 border-l-4 border-l-indigo-600 shadow-md overflow-hidden">
+              <div className="bg-white rounded-t-none rounded-b-2xl border-t-0 lg:rounded-t-2xl lg:border-t-2 border-2 border-slate-200/90 border-l-4 border-l-indigo-600 shadow-md overflow-hidden">
                 {/* Top Banner (Matching lighter refined gradient) */}
                 <div className="bg-gradient-to-r from-slate-800 via-indigo-900 to-purple-900 text-white p-4 sm:p-5">
                   <div className="flex items-center justify-between mb-2">
@@ -784,10 +784,6 @@ export default function Home({
                       <Calculator size={18} />
                       <span>Save Record Only</span>
                     </button>
-                  </div>
-
-                  {/* Footer preview note */}
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 pt-3 border-t border-gray-100">
                   </div>
                 </div>
               </div>
