@@ -94,6 +94,40 @@ function Navigation({ setCurrentPage }) {
   );
 }
 
+// ── StatsCard ─────────────────────────────────────────────────────────────────
+function StatsCard({ title, value, isCurrency = false, icon: Icon, color = 'purple' }) {
+  const colorClasses = {
+    purple: 'from-purple-600 to-indigo-600',
+    blue: 'from-blue-600 to-cyan-600',
+    green: 'from-green-600 to-emerald-600',
+    orange: 'from-orange-600 to-red-600',
+    emerald: 'from-emerald-600 to-teal-600',
+  };
+
+  return (
+    <div
+      className={`bg-gradient-to-r ${colorClasses[color] || colorClasses.purple} rounded-xl shadow-md p-3.5 sm:p-4 text-white transition-all relative overflow-hidden`}
+    >
+      <div className="absolute inset-0 opacity-10 pointer-events-none">
+        <div className="absolute -right-4 -top-4 w-20 h-20 bg-white rounded-full" />
+        <div className="absolute -left-2 -bottom-2 w-16 h-16 bg-white rounded-full" />
+      </div>
+      <div className="relative z-10">
+        <div className="flex justify-between items-start mb-1.5">
+          <p className="text-white/80 text-xs sm:text-sm font-medium">{title}</p>
+          {Icon && <Icon size={18} className="text-white/60" />}
+        </div>
+        <p className="text-xl sm:text-2xl font-bold mt-0.5">
+          {isCurrency && '₨'}
+          {isCurrency
+            ? typeof value === 'number' ? value.toFixed(0) : value
+            : value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Home ──────────────────────────────────────────────────────────────────────
 export default function Home({
   setCurrentPage,
@@ -380,6 +414,57 @@ export default function Home({
     if (cash > 0) return cash;
     return medicineTotalAmount + parseFloat(currentRecord.doctorFees || 0);
   }, [currentRecord.totalCashCollected, medicineTotalAmount, currentRecord.doctorFees]);
+
+  // Enhanced overall totals across all patient records (Medical Only)
+  const enhancedOverallTotals = useMemo(() => {
+    let medicineCost = 0;
+    let medicineSale = 0;
+    let doctorFees = 0;
+    records.forEach((record) => {
+      const totals = calculateRecordTotals(record);
+      medicineCost += totals.medicineCost || 0;
+      medicineSale += totals.medicineSale || 0;
+      doctorFees += parseFloat(record.doctorFees || 0);
+    });
+    const medicineProfit = medicineSale - medicineCost;
+    const totalProfit = medicineProfit + doctorFees;
+    return { medicineCost, medicineProfit, doctorFees, totalProfit };
+  }, [records]);
+
+  // Overall summary card with 4 stat cards (rendered in left column on desktop, below OPD billing on mobile)
+  const renderOverallSummary = () => {
+    if (records.length === 0) return null;
+    return (
+      <div className="bg-white rounded-2xl border-2 border-slate-200/90 border-l-4 border-l-indigo-600 shadow-sm relative">
+        <div className="bg-gradient-to-r from-slate-800 via-indigo-900 to-purple-900 text-white rounded-t-xl px-4 py-3 sm:px-5 sm:py-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-white/10 text-indigo-300 rounded-lg">
+              <BarChart3 size={16} />
+            </div>
+            <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white">
+              Overall Summary (Medical Only)
+            </h2>
+          </div>
+          <button
+            onClick={() => exportRecordsToCSV(records)}
+            className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-sm"
+          >
+            <Download size={14} />
+            <span>Export to CSV</span>
+          </button>
+        </div>
+
+        <div className="p-3.5 sm:p-5 rounded-b-xl">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatsCard title="Medicine Cost" value={enhancedOverallTotals.medicineCost} isCurrency icon={Package} color="orange" />
+            <StatsCard title="Medicine Profit" value={enhancedOverallTotals.medicineProfit} isCurrency icon={TrendingUp} color="emerald" />
+            <StatsCard title="Doctor Fees" value={enhancedOverallTotals.doctorFees} isCurrency icon={Calculator} color="blue" />
+            <StatsCard title="Total Profit" value={enhancedOverallTotals.totalProfit} isCurrency icon={DollarSign} color="purple" />
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-slate-50/70 text-slate-800 flex flex-col">
@@ -683,6 +768,11 @@ export default function Home({
                   />
                 </div>
               </div>
+
+              {/* 5. OVERALL SUMMARY (Desktop Only: In left column below Medicine) */}
+              <div className="hidden lg:block">
+                {renderOverallSummary()}
+              </div>
             </div>
 
             {/* ════ RIGHT COLUMN (4 cols): OPD Billing & Actions (100% Static on Desktop, Zero Movement) ════ */}
@@ -790,6 +880,11 @@ export default function Home({
                   <div className="flex justify-between items-center text-[10px] text-slate-400 pt-3 border-t border-gray-100">
                   </div>
                 </div>
+              </div>
+
+              {/* 5. OVERALL SUMMARY (Mobile Only: Placed below OPD Billing) */}
+              <div className="block lg:hidden pb-10">
+                {renderOverallSummary()}
               </div>
             </div>
           </div>
