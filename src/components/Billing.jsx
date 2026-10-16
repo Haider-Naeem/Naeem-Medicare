@@ -364,7 +364,7 @@ export default function Billing({ setCurrentPage, records = [], inventory = [] }
     }
   };
 
-  // ── Save as PDF (57mm Thermal Size) ──
+  // ── Save as PDF (80mm Thermal Size) ──
   const handleSaveAsPDF = async () => {
     if (billingItems.length === 0 && !(parseFloat(doctorFee) > 0)) {
       return alert('Add at least one item or doctor fee first.');
@@ -382,7 +382,7 @@ export default function Billing({ setCurrentPage, records = [], inventory = [] }
         scrollY: -window.scrollY,
       });
       const imgData = canvas.toDataURL('image/png');
-      const imgWidth = 57; // 57mm width
+      const imgWidth = 80; // 80mm width
       const pageHeight = (canvas.height * imgWidth) / canvas.width;
 
       const pdf = new jsPDF({
@@ -866,32 +866,32 @@ export default function Billing({ setCurrentPage, records = [], inventory = [] }
             </div>
 
             {/* Summary */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-4 text-white shadow-lg">
-              <div className="flex justify-between items-center mb-1 text-sm">
-                <span className="text-white/80">Subtotal:</span>
-                <span className="font-semibold">₨{itemsSubtotal.toFixed(0)}</span>
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-4 text-white shadow-lg space-y-1.5">
+              <div className="flex justify-between items-center text-base">
+                <span className="text-white/90 font-bold">Subtotal:</span>
+                <span className="font-bold text-lg">₨{itemsSubtotal.toFixed(0)}</span>
               </div>
               {generalDiscount > 0 && (
-                <div className="flex justify-between items-center mb-1 text-sm">
-                  <span className="text-red-200">Bill Discount:</span>
-                  <span className="font-semibold text-red-200">-₨{generalDiscount.toFixed(0)}</span>
+                <div className="flex justify-between items-center text-base">
+                  <span className="text-red-200 font-bold">Bill Discount:</span>
+                  <span className="font-bold text-lg text-red-200">-₨{generalDiscount.toFixed(0)}</span>
                 </div>
               )}
               {itemsDiscountTotal > 0 && (
-                <div className="flex justify-between items-center mb-1 text-xs text-white/75">
-                  <span className="italic">Medicine Discounts (Saved):</span>
-                  <span className="font-semibold text-emerald-200">₨{itemsDiscountTotal.toFixed(0)}</span>
+                <div className="flex justify-between items-center text-sm text-white/90">
+                  <span className="italic font-bold">Medicine Discounts (Saved):</span>
+                  <span className="font-bold text-emerald-200">₨{itemsDiscountTotal.toFixed(0)}</span>
                 </div>
               )}
               {drFee > 0 && (
-                <div className="flex justify-between items-center mb-1 text-sm">
-                  <span className="text-white/80">Doctor's Fee:</span>
-                  <span className="font-semibold">₨{drFee.toFixed(0)}</span>
+                <div className="flex justify-between items-center text-base">
+                  <span className="text-white/90 font-bold">Doctor's Fee:</span>
+                  <span className="font-bold text-lg">₨{drFee.toFixed(0)}</span>
                 </div>
               )}
-              <div className="flex justify-between items-center pt-2 mt-2 border-t border-white/30">
-                <span className="text-lg font-bold">TOTAL:</span>
-                <span className="text-2xl font-bold">₨{grandTotal.toFixed(0)}</span>
+              <div className="flex justify-between items-center pt-2.5 mt-2 border-t-2 border-white/40">
+                <span className="text-xl font-black">TOTAL:</span>
+                <span className="text-3xl font-black">₨{grandTotal.toFixed(0)}</span>
               </div>
             </div>
 
@@ -901,7 +901,7 @@ export default function Billing({ setCurrentPage, records = [], inventory = [] }
                 onClick={handlePrint}
                 className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-3 rounded-xl font-bold text-lg flex items-center justify-center gap-2 hover:from-green-700 hover:to-emerald-700 shadow-lg transition-all active:scale-95"
               >
-                <Printer size={22} /> Print Receipt (57mm)
+                <Printer size={22} /> Print Receipt (80mm)
               </button>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -950,7 +950,7 @@ export default function Billing({ setCurrentPage, records = [], inventory = [] }
                 />
               </div>
               <p className="text-xs text-gray-400 text-center mt-3">
-                Preview shows actual 57mm thermal receipt layout
+                Preview shows actual 80mm thermal receipt layout
               </p>
             </div>
           </div>

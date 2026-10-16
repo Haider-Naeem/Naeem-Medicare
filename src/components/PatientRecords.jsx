@@ -547,7 +547,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
                                           <button
                                             onClick={(e) => openPrintBill(record, e)}
                                             className="text-emerald-600 hover:text-emerald-800 p-1.5 hover:bg-emerald-50 rounded transition-colors"
-                                            title="Print Thermal Bill (57mm)"
+                                            title="Print Thermal Bill (80mm)"
                                           >
                                             <Printer size={16} />
                                           </button>
@@ -808,7 +808,7 @@ export default function PatientRecords({ records, setRecords, inventory, setInve
           </div>
         </div>
       )}
-      {/* ── 57mm Thermal Receipt Modal ── */}
+      {/* ── 80mm Thermal Receipt Modal ── */}
       {showReceiptModal && printVisitRecord && (
         <ReceiptModal
           isOpen={showReceiptModal}

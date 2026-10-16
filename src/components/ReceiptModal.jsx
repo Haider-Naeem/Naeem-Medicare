@@ -14,7 +14,7 @@ export const cleanMedicineNameOnly = (rawName) => {
   return name || 'Medicine';
 };
 
-// ── 57mm Thermal Print Styles ────────────────────────────────────────────────
+// ── 80mm Thermal Print Styles ────────────────────────────────────────────────
 export function PrintStyles() {
   return (
     <style>{`
@@ -30,15 +30,27 @@ export function PrintStyles() {
           position: fixed !important;
           left: 0 !important;
           top: 0 !important;
-          width: 57mm !important;
-          padding: 1.5mm 2mm !important;
+          width: 80mm !important;
+          padding: 0.5mm 3.5mm 3.5mm 3.5mm !important;
           margin: 0 !important;
           border: none !important;
           border-radius: 0 !important;
           box-shadow: none !important;
+          font-family: 'Segoe UI', Arial, sans-serif !important;
+          font-weight: 900 !important;
+          color: #000 !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          -webkit-text-stroke: 0.35px #000 !important;
+        }
+        #receipt-print-area * {
+          font-family: 'Segoe UI', Arial, sans-serif !important;
+          font-weight: 900 !important;
+          color: #000 !important;
+          -webkit-text-stroke: 0.25px #000 !important;
         }
         @page {
-          size: 57mm auto;
+          size: 80mm auto;
           margin: 0;
         }
       }
@@ -46,7 +58,49 @@ export function PrintStyles() {
   );
 }
 
-// ── 57mm Thermal Receipt Component ───────────────────────────────────────────
+// ── Format Date strictly as DD-MM-YYYY (Left to Right) ─────────────────────────
+export const formatDDMMYYYY = (rawDate) => {
+  if (!rawDate) {
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const y = now.getFullYear();
+    return `${d}-${m}-${y}`;
+  }
+
+  const str = String(rawDate).trim();
+
+  // If already DD-MM-YYYY (e.g. 16-10-2026)
+  if (/^\d{2}-\d{2}-\d{4}$/.test(str)) {
+    return str;
+  }
+
+  // If YYYY-MM-DD (e.g. 2026-10-16 or 2026-10-16T...)
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    const parts = str.split('T')[0].split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+  }
+
+  // If DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+    return str.replace(/\//g, '-');
+  }
+
+  // Parse via Date object
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const d = String(parsed.getDate()).padStart(2, '0');
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const y = parsed.getFullYear();
+    return `${d}-${m}-${y}`;
+  }
+
+  return str;
+};
+
+// ── 80mm Thermal Receipt Component ───────────────────────────────────────────
 export function Receipt({
   patientName,
   patientPhone,
@@ -61,48 +115,50 @@ export function Receipt({
   const drFee = parseFloat(doctorFee) || 0;
   const grandTotal = Math.max(0, itemsSubtotal - generalDiscount + drFee);
 
-  const displayDate =
-    date ||
-    new Date().toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'Asia/Karachi',
-    });
+  const displayDate = formatDDMMYYYY(date);
 
   return (
     <div
       ref={receiptRef}
       id="receipt-print-area"
-      className="bg-white border-2 border-gray-300 rounded-lg mx-auto"
+      className="bg-white mx-auto"
       style={{
-        width: '57mm',
-        fontFamily: "'Courier New', Courier, monospace",
-        padding: '1.5mm 2.5mm 3mm 2.5mm',
+        width: '80mm',
+        fontFamily: "'Segoe UI', Arial, -apple-system, sans-serif",
+        padding: '0.5mm 0.5mm 5mm 0.5mm',
         color: '#000',
         backgroundColor: '#fff',
         boxSizing: 'border-box',
+        fontWeight: '900',
+        border: 'none',
+        borderRadius: '0',
+        boxShadow: 'none',
       }}
     >
       {/* ── BOLD & CENTER-ALIGNED HEADING ── */}
-      <div style={{ textAlign: 'center', marginBottom: '1.5mm' }}>
+      <div style={{ textAlign: 'center', marginBottom: '2.5mm', marginTop: '0', paddingTop: '0' }}>
         <div
           style={{
-            fontSize: '14px',
-            fontWeight: 'bold',
-            lineHeight: 1.2,
-            letterSpacing: '1.5px',
+            fontSize: '20px',
+            fontWeight: '900',
+            lineHeight: 1.1,
+            letterSpacing: '5px',
             textTransform: 'uppercase',
+            color: '#000',
+            margin: '0',
+            padding: '0',
           }}
         >
           NAEEM MEDICARE
         </div>
         <div
           style={{
-            fontSize: '8px',
-            fontWeight: 'bold',
+            fontSize: '12px',
+            fontWeight: '900',
             lineHeight: 1.35,
+            letterSpacing: '0.9px',
             marginTop: '1mm',
+            color: '#000',
           }}
         >
           Street 10 Near Fazal Din Dairy Farm
@@ -111,42 +167,46 @@ export function Receipt({
           <br />
           Rahim Yar Khan
         </div>
-        <div style={{ fontSize: '9px', fontWeight: 'bold', marginTop: '1mm' }}>
+        <div style={{ fontSize: '13px', fontWeight: '900', letterSpacing: '1px', marginTop: '1mm', color: '#000' }}>
           Ph: 03056802371
         </div>
       </div>
 
       {/* Divider */}
-      <div style={{ borderTop: '1px dashed #000', margin: '1.2mm 0' }} />
+      <div style={{ borderTop: '2px dashed #000', margin: '1.8mm 0' }} />
 
       {/* Patient Info */}
-      <div style={{ fontSize: '9px', fontWeight: 'bold', lineHeight: 1.35 }}>
-        <div>Patient: {patientName || '—'}</div>
-        {patientPhone && <div>Phone: {patientPhone}</div>}
-        <div>Date: {displayDate}</div>
+      <div style={{ fontSize: '13px', fontWeight: '900', lineHeight: 1.45, color: '#000' }}>
+        <div>PATIENT: {patientName || '—'}</div>
+        {patientPhone && <div>PHONE: {patientPhone}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span>DATE:</span>
+          <span dir="ltr" style={{ direction: 'ltr', unicodeBidi: 'bidi-override' }}>{displayDate}</span>
+        </div>
       </div>
 
       {/* Divider */}
-      <div style={{ borderTop: '1px dashed #000', margin: '1.2mm 0' }} />
+      <div style={{ borderTop: '2px dashed #000', margin: '1.8mm 0' }} />
 
       {/* ── 5 COLUMNS HEADER: ITEM, QTY, RATE, DISC, AMT (NO TYPE) ── */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          fontSize: '7.5px',
-          fontWeight: 'bold',
-          marginBottom: '0.6mm',
+          fontSize: '12.5px',
+          fontWeight: '900',
+          marginBottom: '1mm',
+          color: '#000',
         }}
       >
-        <span style={{ flex: 1.4, textAlign: 'left' }}>ITEM</span>
-        <span style={{ flex: 0.3, textAlign: 'center' }}>QTY</span>
-        <span style={{ flex: 0.45, textAlign: 'center' }}>RATE</span>
-        <span style={{ flex: 0.45, textAlign: 'center' }}>DISC</span>
-        <span style={{ flex: 0.6, textAlign: 'right' }}>AMT</span>
+        <span style={{ flex: 1.6, textAlign: 'left', fontWeight: '900' }}>ITEM</span>
+        <span style={{ flex: 0.35, textAlign: 'center', fontWeight: '900' }}>QTY</span>
+        <span style={{ flex: 0.5, textAlign: 'center', fontWeight: '900' }}>RATE</span>
+        <span style={{ flex: 0.45, textAlign: 'center', fontWeight: '900' }}>DISC</span>
+        <span style={{ flex: 0.65, textAlign: 'right', fontWeight: '900' }}>AMT</span>
       </div>
 
-      <div style={{ borderTop: '1px solid #000', margin: '0.5mm 0' }} />
+      <div style={{ borderTop: '2px solid #000', margin: '1mm 0' }} />
 
       {/* Items List */}
       {items.length > 0 ? (
@@ -166,71 +226,72 @@ export function Receipt({
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'baseline',
-                fontSize: '8px',
-                fontWeight: 'bold',
-                lineHeight: 1.25,
-                paddingTop: '0.4mm',
-                paddingBottom: '0.4mm',
+                fontSize: '13px',
+                fontWeight: '900',
+                lineHeight: 1.35,
+                paddingTop: '0.8mm',
+                paddingBottom: '0.8mm',
+                color: '#000',
               }}
             >
-              <span style={{ flex: 1.4, wordBreak: 'break-word', paddingRight: '0.5mm' }}>
+              <span style={{ flex: 1.6, wordBreak: 'break-word', paddingRight: '1mm', fontWeight: '900' }}>
                 {cleanName}
               </span>
-              <span style={{ flex: 0.3, textAlign: 'center' }}>{qty}</span>
-              <span style={{ flex: 0.45, textAlign: 'center' }}>{rate.toFixed(0)}</span>
-              <span style={{ flex: 0.45, textAlign: 'center' }}>
+              <span style={{ flex: 0.35, textAlign: 'center', fontWeight: '900' }}>{qty}</span>
+              <span style={{ flex: 0.5, textAlign: 'center', fontWeight: '900' }}>{rate.toFixed(0)}</span>
+              <span style={{ flex: 0.45, textAlign: 'center', fontWeight: '900' }}>
                 {discPct > 0 ? `${discPct.toFixed(0)}%` : '-'}
               </span>
-              <span style={{ flex: 0.6, textAlign: 'right' }}>{amt.toFixed(0)}</span>
+              <span style={{ flex: 0.65, textAlign: 'right', fontWeight: '900' }}>{amt.toFixed(0)}</span>
             </div>
           );
         })
       ) : (
-        <div style={{ fontSize: '8px', textAlign: 'center', color: '#666', padding: '2mm 0', fontWeight: 'bold' }}>
+        <div style={{ fontSize: '13px', textAlign: 'center', color: '#000', padding: '2mm 0', fontWeight: '900' }}>
           No medicines added
         </div>
       )}
 
       {/* Divider */}
-      <div style={{ borderTop: '1px dashed #000', margin: '1.2mm 0' }} />
+      <div style={{ borderTop: '2px dashed #000', margin: '1.8mm 0' }} />
 
       {/* Subtotal */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 'bold', lineHeight: 1.35 }}>
-        <span>Subtotal:</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', fontWeight: '900', lineHeight: 1.45, color: '#000' }}>
+        <span>SUBTOTAL:</span>
         <span>Rs.{itemsSubtotal.toFixed(0)}</span>
       </div>
 
       {/* Bill Discount (if any) */}
       {generalDiscount > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 'bold', lineHeight: 1.35 }}>
-          <span>Discount:</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', fontWeight: '900', lineHeight: 1.45, color: '#000' }}>
+          <span>DISCOUNT:</span>
           <span>-Rs.{generalDiscount.toFixed(0)}</span>
         </div>
       )}
 
       {/* Doctor's Fee */}
       {drFee > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 'bold', lineHeight: 1.35 }}>
-          <span>Dr's Fee:</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', fontWeight: '900', lineHeight: 1.45, color: '#000' }}>
+          <span>DR'S FEE:</span>
           <span>Rs.{drFee.toFixed(0)}</span>
         </div>
       )}
 
       {/* Divider */}
-      <div style={{ borderTop: '2px solid #000', margin: '1.2mm 0' }} />
+      <div style={{ borderTop: '2.5px solid #000', margin: '1.8mm 0' }} />
 
       {/* Grand Total */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', lineHeight: 1.3 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '900', lineHeight: 1.35, color: '#000' }}>
         <span>TOTAL:</span>
         <span>Rs.{grandTotal.toFixed(0)}</span>
       </div>
 
       {/* Divider */}
-      <div style={{ borderTop: '2px solid #000', margin: '1.2mm 0' }} />
+      <div style={{ borderTop: '2.5px solid #000', margin: '1.8mm 0' }} />
 
       {/* Footer */}
-      <div style={{ textAlign: 'center', fontSize: '8px', fontWeight: 'bold', color: '#555', marginTop: '1.5mm' }}>
-        Have a Nice Day 😊.
+      <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: '900', color: '#000', marginTop: '2mm' }}>
+        Have a Nice Day ⭐.
       </div>
     </div>
   );
@@ -282,7 +343,7 @@ export default function ReceiptModal({
     }
   };
 
-  // Save as 57mm Thermal PDF
+  // Save as 80mm Thermal PDF
   const handleSavePDF = async () => {
     const el = receiptRef.current;
     if (!el) return;
@@ -295,7 +356,7 @@ export default function ReceiptModal({
         logging: false,
       });
       const imgData = canvas.toDataURL('image/png');
-      const imgWidth = 57;
+      const imgWidth = 80;
       const pageHeight = (canvas.height * imgWidth) / canvas.width;
       const pdf = new jsPDF({
         orientation: 'portrait',
@@ -328,7 +389,7 @@ export default function ReceiptModal({
           <div className="flex items-center gap-2">
             <Printer size={20} className="text-indigo-600" />
             <h3 className="text-base sm:text-lg font-bold text-gray-800">
-              57mm Thermal Bill Preview
+              80mm Thermal Bill Preview
             </h3>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
@@ -355,7 +416,7 @@ export default function ReceiptModal({
             onClick={handlePrint}
             className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-2.5 rounded-xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
           >
-            <Printer size={18} /> Print Thermal Bill (57mm)
+            <Printer size={18} /> Print Thermal Bill (80mm)
           </button>
 
           <div className="grid grid-cols-2 gap-2">

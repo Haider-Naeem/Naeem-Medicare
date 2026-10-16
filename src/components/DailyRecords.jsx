@@ -584,7 +584,7 @@ Type 'DELETE' to confirm:`;
                                 <button
                                   onClick={() => openPrintBill(record)}
                                   className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1 transition"
-                                  title="Print 57mm Thermal Bill"
+                                  title="Print 80mm Thermal Bill"
                                 >
                                   <Printer size={13} /> Print Bill
                                 </button>
@@ -595,7 +595,7 @@ Type 'DELETE' to confirm:`;
                               </p>
                             </div>
 
-                            {/* Financial Details: Shows Total Cash Collected prominently */}
+                            {/* Financial Details: Shows  Cash Collected prominently */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 text-sm">
                               <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 sm:p-2.5">
                                 <p className="text-blue-700 text-xs font-bold">Cash Collected</p>
@@ -603,27 +603,27 @@ Type 'DELETE' to confirm:`;
                                   ₨{parseFloat(record.totalCashCollected || totals.totalSale || 0).toFixed(0)}
                                 </p>
                               </div>
-                              <div>
-                                <p className="text-gray-600 text-xs">Medicine Sale</p>
-                                <p className="font-bold text-green-600">
+                              <div className="bg-green-50 border border-green-200 rounded-lg p-2 sm:p-2.5">
+                                <p className="text-green-700 text-xs font-bold">Medicine Sale</p>
+                                <p className="font-bold text-green-900 text-base sm:text-lg">
                                   ₨{totals.medicineSale.toFixed(0)}
                                 </p>
                               </div>
-                              <div>
-                                <p className="text-gray-600 text-xs">Medicine Profit</p>
-                                <p className="font-bold text-emerald-600">
+                              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 sm:p-2.5">
+                                <p className="text-emerald-700 text-xs font-bold">Medicine Profit</p>
+                                <p className="font-bold text-emerald-900 text-base sm:text-lg">
                                   ₨{(totals.medicineSale - totals.medicineCost).toFixed(0)}
                                 </p>
                               </div>
-                              <div>
-                                <p className="text-gray-600 text-xs">Doctor Fees</p>
-                                <p className="font-bold text-blue-600">
+                              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2 sm:p-2.5">
+                                <p className="text-indigo-700 text-xs font-bold">Doctor Fees</p>
+                                <p className="font-bold text-indigo-900 text-base sm:text-lg">
                                   ₨{Number(record.doctorFees || 0).toFixed(0)}
                                 </p>
                               </div>
-                              <div>
-                                <p className="text-gray-600 text-xs">Total Profit</p>
-                                <p className="font-bold text-purple-600">
+                              <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 sm:p-2.5">
+                                <p className="text-purple-700 text-xs font-bold">Total Profit</p>
+                                <p className="font-bold text-purple-900 text-base sm:text-lg">
                                   ₨{((totals.medicineSale - totals.medicineCost) + Number(record.doctorFees || 0)).toFixed(0)}
                                 </p>
                               </div>
