@@ -108,6 +108,8 @@ export function Receipt({
   items = [],
   doctorFee = 0,
   billDiscount = 0,
+  doctorName = 'Dr. Huzaifa Naeem',
+  pmdcNo = '947956-01-M',
   receiptRef,
 }) {
   const itemsSubtotal = items.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
@@ -173,7 +175,16 @@ export function Receipt({
       </div>
 
       {/* Divider */}
-      <div style={{ borderTop: '2px dashed #000', margin: '1.8mm 0' }} />
+      <div style={{ borderTop: '2px dotted #000', margin: '1.8mm 0' }} />
+
+      {/* Doctor Info */}
+      <div style={{ fontSize: '15px', fontWeight: '900', lineHeight: 1.45, color: '#000' }}>
+        <div>DR. Name : {doctorName}</div>
+        <div>PMDC NO: {pmdcNo}</div>
+      </div>
+
+      {/* Divider */}
+      <div style={{ borderTop: '2px dotted #000', margin: '1.8mm 0' }} />
 
       {/* Patient Info */}
       <div style={{ fontSize: '13px', fontWeight: '900', lineHeight: 1.45, color: '#000' }}>
@@ -186,7 +197,7 @@ export function Receipt({
       </div>
 
       {/* Divider */}
-      <div style={{ borderTop: '2px dashed #000', margin: '1.8mm 0' }} />
+      <div style={{ borderTop: '2px dotted #000', margin: '1.8mm 0' }} />
 
       {/* ── 5 COLUMNS HEADER: ITEM, QTY, RATE, DISC, AMT (NO TYPE) ── */}
       <div
@@ -307,6 +318,8 @@ export default function ReceiptModal({
   items = [],
   doctorFee = 0,
   billDiscount = 0,
+  doctorName = 'Dr. Huzaifa Naeem',
+  pmdcNo = '947956-01-M',
 }) {
   const receiptRef = useRef(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -406,6 +419,8 @@ export default function ReceiptModal({
             items={items}
             doctorFee={doctorFee}
             billDiscount={billDiscount}
+            doctorName={doctorName}
+            pmdcNo={pmdcNo}
             receiptRef={receiptRef}
           />
         </div>
